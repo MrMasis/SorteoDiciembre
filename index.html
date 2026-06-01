@@ -679,32 +679,23 @@ const sortV = arr => [...arr].sort((a,b)=>a.nombre.localeCompare(b.nombre));
 
 // ═══════════════════════════════ PERFILES DE ACCESO
 function seleccionarPerfil(){
-  const socios=sortV(V.filter(v=>v.esSocio));
-  const socioOpts=socios.map(s=>`<option value="socio_${s.id}">${s.nombre}</option>`).join('');
-  showModal('Seleccionar perfil','Elige tu perfil e ingresa tu contraseña.',()=>{
-    const perfil=document.getElementById('modal-perfil-sel').value;
-    const pass=document.getElementById('modal-perfil-pass').value;
+  showModal('Acceso al sistema','Ingresa tu contraseña.',()=>{
+    const pass=document.getElementById('modal-perfil-pass').value.trim();
     let ok=false;
-    if(perfil==='admin'&&pass===(CFG.pass||'1234')){perfilActivo='admin';isAdmin=true;socioActivoId=null;ok=true;}
-    else if(perfil==='padre'&&pass===(CFG.passPadre||'padre')){perfilActivo='padre';isAdmin=false;socioActivoId=null;ok=true;}
-    else if(perfil.startsWith('socio_')){
-      const sid=parseInt(perfil.replace('socio_',''));
-      const socio=V.find(v=>v.id===sid);
-      if(socio){
-        const passEsperado=CFG['passSocio_'+sid]||(socio.nombre.split(' ')[0].toLowerCase());
-        if(pass===passEsperado){perfilActivo='socio';isAdmin=false;socioActivoId=sid;ok=true;}
+    if(pass===(CFG.pass||'1234')){
+      perfilActivo='admin';isAdmin=true;socioActivoId=null;ok=true;
+    } else if(pass===(CFG.passPadre||'padre')){
+      perfilActivo='padre';isAdmin=false;socioActivoId=null;ok=true;
+    } else {
+      const socios=V.filter(v=>v.esSocio);
+      for(const s of socios){
+        const passEsp=CFG['passSocio_'+s.id]||(s.nombre.split(' ')[0].toLowerCase());
+        if(pass===passEsp){perfilActivo='socio';isAdmin=false;socioActivoId=s.id;ok=true;break;}
       }
     }
     if(ok)applyProfile();
-    else alert('Contraseña incorrecta');
-  },`<div class="modal-field"><label>Perfil</label>
-     <select id="modal-perfil-sel" style="width:100%">
-       <option value="admin">🔒 Administrador</option>
-       <option value="padre">👨 Padre</option>
-       ${socioOpts}
-     </select></div>
-     <div class="modal-field"><label>Contraseña</label>
-     <input id="modal-perfil-pass" type="password" style="width:100%" autofocus></div>`,'Entrar');
+    else alert('Contraseña incorrecta. Inténtalo de nuevo.');
+  },'<div class="modal-field"><label>Contraseña</label><input id="modal-perfil-pass" type="password" style="width:100%" autofocus></div>','Entrar');
 }
 function cerrarSesion(){
   perfilActivo='publico';isAdmin=false;socioActivoId=null;
@@ -723,32 +714,25 @@ function applyProfile(){
   const adminSection=document.getElementById('mapa-admin-section');
 
   // Ocultar todo primero
-  document.querySelectorAll('.tab').forEach(t=>{
-    t.classList.remove('visible');
-    t.style.display='none';
-  });
+  document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
   document.querySelectorAll('.admin-control').forEach(el=>el.style.display='none');
   if(adminSection)adminSection.style.display='none';
-
-  // Siempre visibles: dashboard y mapa
-  const tabsPublicos=['tab-btn-dashboard','tab-btn-mapa'];
 
   if(perfilActivo==='publico'){
     perfilBtn.textContent='🔒 Ingresar';perfilBtn.classList.remove('active');
     if(salirBtn)salirBtn.style.display='none';
-    badge.classList.add('visible');
+    badge.classList.remove('visible');
     // Solo dashboard y lista numérica
     document.querySelectorAll('.tab').forEach(t=>{
-      if(t.onclick&&(t.onclick.toString().includes("'dashboard'")||t.onclick.toString().includes("'mapa'"))){
-        t.style.display='';
-      }
+      const fn=t.getAttribute('onclick')||'';
+      if(fn.includes("'dashboard'")||fn.includes("'mapa'"))t.style.display='';
     });
 
   } else if(perfilActivo==='admin'){
     perfilBtn.textContent='🔓 Admin';perfilBtn.classList.add('active');
     if(salirBtn)salirBtn.style.display='';
     badge.classList.remove('visible');
-    // Todas las pestañas visibles
+    // TODAS las pestañas y controles visibles
     document.querySelectorAll('.tab').forEach(t=>t.style.display='');
     if(adminSection)adminSection.style.display='block';
     document.querySelectorAll('.admin-control').forEach(el=>el.style.display='');
@@ -757,11 +741,11 @@ function applyProfile(){
     perfilBtn.textContent='👨 Padre';perfilBtn.classList.add('active');
     if(salirBtn)salirBtn.style.display='';
     badge.classList.remove('visible');
-    // Ve todo excepto ADMON, Vendidas RC&R, Abonos admin, Historial, Abonados
+    // Ve todo excepto ADMON, Vendidas RC&R, Abonos, Historial, Números abonados
     document.querySelectorAll('.tab').forEach(t=>{
-      const txt=t.textContent.trim();
-      const ocultos=['ADMON','Vendidas RC&R','Abonos','Historial','Números abonados'];
-      if(!ocultos.includes(txt))t.style.display='';
+      const fn=t.getAttribute('onclick')||'';
+      const ocultos=["'directas'","'abonos'","'historial'","'abonados'","'admon'"];
+      if(!ocultos.some(o=>fn.includes(o)))t.style.display='';
     });
 
   } else if(perfilActivo==='socio'){
@@ -769,11 +753,11 @@ function applyProfile(){
     perfilBtn.textContent=`★ ${socio?socio.nombre.split(' ')[0]:'Socio'}`;perfilBtn.classList.add('active');
     if(salirBtn)salirBtn.style.display='';
     badge.classList.remove('visible');
-    // Ve: dashboard, mapa, vendedores (solo suyos), dinero (solo suyos), registrar abono (solo suyos)
+    // Solo: dashboard, mapa, vendedores, dinero, registrar abono
     document.querySelectorAll('.tab').forEach(t=>{
-      const txt=t.textContent.trim();
-      const visibles=['Tablero principal','Lista numérica','Vendedores','Dinero por recoger','Registrar abono'];
-      if(visibles.includes(txt))t.style.display='';
+      const fn=t.getAttribute('onclick')||'';
+      const visibles=["'dashboard'","'mapa'","'vendedores'","'dinero'","'abonos-rapido'"];
+      if(visibles.some(v=>fn.includes(v)))t.style.display='';
     });
   }
 
@@ -782,11 +766,12 @@ function applyProfile(){
   if(activeTab&&activeTab.style.display==='none'){
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
     document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-    const primerTab=document.querySelector('.tab:not([style*="display: none"])');
-    if(primerTab){primerTab.classList.add('active');primerTab.click();}
-    else{document.getElementById('tab-dashboard').classList.add('active');renderDash();}
+    document.getElementById('tab-dashboard').classList.add('active');
+    document.querySelector('.tab[style*="display: block"], .tab:not([style*="display: none"])')?.classList.add('active');
+    renderDash();
+  } else {
+    renderDash();
   }
-  renderDash();
 }
 function cambiarPassSocio(sid){
   const nueva=document.getElementById('pass-socio-'+sid).value;
@@ -993,10 +978,6 @@ function renderVendedores(){
   const cont=document.getElementById('vendedores-lista');
   if(!V.length){cont.innerHTML='<div class="card"><div class="empty">Sin vendedores registrados</div></div>';return;}
   let listaV=sortV(V);
-  // Si es socio, solo ve sus vendedores y él mismo
-  if(perfilActivo==='socio'&&socioActivoId){
-    listaV=listaV.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
-  }
   if(buscar)listaV=listaV.filter(v=>v.nombre.toLowerCase().includes(buscar));
   if(!listaV.length){cont.innerHTML='<div class="card"><div class="empty">Sin coincidencias</div></div>';return;}
 
@@ -1008,8 +989,13 @@ function renderVendedores(){
   }
 
   // Separar socios, vendedores con socio y vendedores sin socio
-  const socios=sortV(V.filter(v=>v.esSocio)); // siempre mostrar todos los socios
-  const sinSocio=listaV.filter(v=>!v.esSocio&&!v.socioId);
+  // Si es socio, solo mostrar su propio grupo
+  let todosSocios=sortV(V.filter(v=>v.esSocio));
+  if(perfilActivo==='socio'&&socioActivoId){
+    todosSocios=todosSocios.filter(v=>v.id===socioActivoId);
+  }
+  const socios=todosSocios;
+  const sinSocio=perfilActivo==='socio'?[]:listaV.filter(v=>!v.esSocio&&!v.socioId);
   let html='';
 
   // Socios con sus vendedores agrupados
@@ -2116,7 +2102,7 @@ function importarJSON(e){
 }
 
 // ═══════════════════════════════ SYNC CON GOOGLE SHEETS
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzf2-JZlFn6kBE3v62iIxWfOcnElqfEVo0AOaQv8NdGaqKLkIW7A_6aNLer2miKukfU/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw9RjqwWWVrKzK2ac4B6WiFimQSMOooHmVqE73-sHF5MHT4ZThqUu3CG3BcKuTtXFJfSA/exec';
 
 function showSyncStatus(msg, color){
   let el = document.getElementById('sync-status');
