@@ -217,7 +217,10 @@ tbody tr:hover td{background:var(--bg)}
       <div class="header-precio" id="header-precio">Precio: —</div>
       <div id="sync-status" style="font-size:10px;font-family:var(--mono);color:var(--text3)">Iniciando...</div>
     </div>
-    <button class="admin-btn" id="admin-toggle-btn" onclick="toggleAdmin()">🔒 Administrador</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="admin-btn" id="perfil-btn" onclick="seleccionarPerfil()">🔒 Ingresar</button>
+      <button class="admin-btn" id="salir-btn" onclick="cerrarSesion()" style="display:none">↩ Salir</button>
+    </div>
   </div>
 </div>
 
@@ -234,7 +237,7 @@ tbody tr:hover td{background:var(--bg)}
   <button class="tab admin-only" onclick="goTab('admon',this)">ADMON</button>
 </div>
 
-<div class="readonly-badge" id="readonly-badge">👁 Solo lectura</div>
+<div class="readonly-badge" id="readonly-badge" style="display:none">👁 Solo lectura</div>
 
 <div class="main">
 
@@ -559,13 +562,25 @@ tbody tr:hover td{background:var(--bg)}
         <div style="font-size:12px;color:var(--text3);margin-top:6px;font-family:var(--mono)" id="s-precio-actual"></div>
       </div>
       <div class="card">
-        <div class="ctitle">Contraseña de administrador</div>
-        <div class="fr">
-          <input id="s-pass-actual" type="password" placeholder="Contraseña actual" style="flex:1">
-          <input id="s-pass-nueva" type="password" placeholder="Nueva contraseña" style="flex:1">
-          <button class="btn" onclick="cambiarPassword()">Cambiar</button>
+        <div class="ctitle">Contraseñas de acceso</div>
+        <div style="margin-bottom:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Administrador</div>
+          <div class="fr">
+            <input id="s-pass-actual" type="password" placeholder="Contraseña actual" style="flex:1">
+            <input id="s-pass-nueva" type="password" placeholder="Nueva contraseña" style="flex:1">
+            <button class="btn" onclick="cambiarPassword()">Cambiar</button>
+          </div>
         </div>
-        <p style="font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono)">Contraseña por defecto: <strong>1234</strong></p>
+        <div style="margin-bottom:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Padre</div>
+          <div class="fr">
+            <input id="s-pass-padre-nueva" type="password" placeholder="Nueva contraseña padre" style="flex:1">
+            <button class="btn" onclick="cambiarPassPerfil('passPadre','s-pass-padre-nueva')">Cambiar</button>
+          </div>
+          <p style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)">Actual: <strong>${CFG.passPadre||'padre'}</strong></p>
+        </div>
+        <div id="pass-socios-admin"></div>
+        <p style="font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono)">Contraseña admin por defecto: <strong>1234</strong></p>
       </div>
       <div class="card">
         <div class="ctitle">Número ganador</div>
@@ -623,13 +638,16 @@ let ABI  = JSON.parse(localStorage.getItem('st8_abi')  || '{}');
 let ABP  = JSON.parse(localStorage.getItem('st8_abp')  || '{}');
 let ABON = JSON.parse(localStorage.getItem('st8_abon') || '{}');
 let ABPAQ= JSON.parse(localStorage.getItem('st8_abpaq')|| '[]');
-let CFG  = JSON.parse(localStorage.getItem('st8_cfg')  || '{"nombre":"Sorteo","precio":50,"ganador":null,"pass":"1234"}');
+let CFG  = JSON.parse(localStorage.getItem('st8_cfg')  || '{"nombre":"Sorteo","precio":50,"ganador":null,"pass":"1234","passPadre":"padre","passGustavo":"gustavo","passBreyner":"breyner"}');
 
 let sel = new Set();
 let mapaMode = 'asignar';
 let dineroTab = 'vendedores';
 let abonoTab = 'vendedores';
 let isAdmin = false;
+// perfil: 'publico' | 'padre' | 'socio' | 'admin'
+let perfilActivo = 'publico';
+let socioActivoId = null; // ID del socio logueado
 
 // Vendor search state
 let vsSelected = {mapa: null, texto: null};
@@ -659,46 +677,129 @@ const today = () => new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'
 const prec  = () => CFG.precio || 50;
 const sortV = arr => [...arr].sort((a,b)=>a.nombre.localeCompare(b.nombre));
 
-// ═══════════════════════════════ ADMIN / PERFILES
-function toggleAdmin(){
-  if(isAdmin){
-    isAdmin=false;applyProfile();
-  } else {
-    showModal('Acceso de administrador','',()=>{
-      const pass=document.getElementById('modal-pass-input').value;
-      if(pass===(CFG.pass||'1234')){isAdmin=true;applyProfile();}
-      else alert('Contraseña incorrecta');
-    },'<div class="modal-field"><label>Contraseña</label><input id="modal-pass-input" type="password" placeholder="Contraseña" style="width:100%" autofocus></div>','Entrar');
-  }
+// ═══════════════════════════════ PERFILES DE ACCESO
+function seleccionarPerfil(){
+  const socios=sortV(V.filter(v=>v.esSocio));
+  const socioOpts=socios.map(s=>`<option value="socio_${s.id}">${s.nombre}</option>`).join('');
+  showModal('Seleccionar perfil','Elige tu perfil e ingresa tu contraseña.',()=>{
+    const perfil=document.getElementById('modal-perfil-sel').value;
+    const pass=document.getElementById('modal-perfil-pass').value;
+    let ok=false;
+    if(perfil==='admin'&&pass===(CFG.pass||'1234')){perfilActivo='admin';isAdmin=true;socioActivoId=null;ok=true;}
+    else if(perfil==='padre'&&pass===(CFG.passPadre||'padre')){perfilActivo='padre';isAdmin=false;socioActivoId=null;ok=true;}
+    else if(perfil.startsWith('socio_')){
+      const sid=parseInt(perfil.replace('socio_',''));
+      const socio=V.find(v=>v.id===sid);
+      if(socio){
+        const passEsperado=CFG['passSocio_'+sid]||(socio.nombre.split(' ')[0].toLowerCase());
+        if(pass===passEsperado){perfilActivo='socio';isAdmin=false;socioActivoId=sid;ok=true;}
+      }
+    }
+    if(ok)applyProfile();
+    else alert('Contraseña incorrecta');
+  },`<div class="modal-field"><label>Perfil</label>
+     <select id="modal-perfil-sel" style="width:100%">
+       <option value="admin">🔒 Administrador</option>
+       <option value="padre">👨 Padre</option>
+       ${socioOpts}
+     </select></div>
+     <div class="modal-field"><label>Contraseña</label>
+     <input id="modal-perfil-pass" type="password" style="width:100%" autofocus></div>`,'Entrar');
+}
+function cerrarSesion(){
+  perfilActivo='publico';isAdmin=false;socioActivoId=null;
+  applyProfile();
+  // Volver a dashboard
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelector('.tab').classList.add('active');
+  document.getElementById('tab-dashboard').classList.add('active');
+  renderDash();
 }
 function applyProfile(){
-  const btn=document.getElementById('admin-toggle-btn');
+  const perfilBtn=document.getElementById('perfil-btn');
+  const salirBtn=document.getElementById('salir-btn');
   const badge=document.getElementById('readonly-badge');
-  const adminTabs=document.querySelectorAll('.tab.admin-only');
   const adminSection=document.getElementById('mapa-admin-section');
-  const adminControls=document.querySelectorAll('.admin-control');
-  if(isAdmin){
-    btn.textContent='🔓 Salir de admin';btn.classList.add('active');
-    badge.classList.remove('visible');
-    adminTabs.forEach(t=>t.classList.add('visible'));
-    adminSection.style.display='block';
-    adminControls.forEach(el=>el.style.display='');
-  } else {
-    btn.textContent='🔒 Administrador';btn.classList.remove('active');
+
+  // Ocultar todo primero
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.classList.remove('visible');
+    t.style.display='none';
+  });
+  document.querySelectorAll('.admin-control').forEach(el=>el.style.display='none');
+  if(adminSection)adminSection.style.display='none';
+
+  // Siempre visibles: dashboard y mapa
+  const tabsPublicos=['tab-btn-dashboard','tab-btn-mapa'];
+
+  if(perfilActivo==='publico'){
+    perfilBtn.textContent='🔒 Ingresar';perfilBtn.classList.remove('active');
+    if(salirBtn)salirBtn.style.display='none';
     badge.classList.add('visible');
-    adminTabs.forEach(t=>t.classList.remove('visible'));
-    adminSection.style.display='none';
-    adminControls.forEach(el=>el.style.display='none');
-    // Si estaba en una pestaña admin, ir a dashboard
-    const activeAdminTab=document.querySelector('.tab.admin-only.active');
-    if(activeAdminTab){
-      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-      document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-      document.querySelector('.tab').classList.add('active');
-      document.getElementById('tab-dashboard').classList.add('active');
-      renderDash();
-    }
+    // Solo dashboard y lista numérica
+    document.querySelectorAll('.tab').forEach(t=>{
+      if(t.onclick&&(t.onclick.toString().includes("'dashboard'")||t.onclick.toString().includes("'mapa'"))){
+        t.style.display='';
+      }
+    });
+
+  } else if(perfilActivo==='admin'){
+    perfilBtn.textContent='🔓 Admin';perfilBtn.classList.add('active');
+    if(salirBtn)salirBtn.style.display='';
+    badge.classList.remove('visible');
+    // Todas las pestañas visibles
+    document.querySelectorAll('.tab').forEach(t=>t.style.display='');
+    if(adminSection)adminSection.style.display='block';
+    document.querySelectorAll('.admin-control').forEach(el=>el.style.display='');
+
+  } else if(perfilActivo==='padre'){
+    perfilBtn.textContent='👨 Padre';perfilBtn.classList.add('active');
+    if(salirBtn)salirBtn.style.display='';
+    badge.classList.remove('visible');
+    // Ve todo excepto ADMON, Vendidas RC&R, Abonos admin, Historial, Abonados
+    document.querySelectorAll('.tab').forEach(t=>{
+      const txt=t.textContent.trim();
+      const ocultos=['ADMON','Vendidas RC&R','Abonos','Historial','Números abonados'];
+      if(!ocultos.includes(txt))t.style.display='';
+    });
+
+  } else if(perfilActivo==='socio'){
+    const socio=V.find(v=>v.id===socioActivoId);
+    perfilBtn.textContent=`★ ${socio?socio.nombre.split(' ')[0]:'Socio'}`;perfilBtn.classList.add('active');
+    if(salirBtn)salirBtn.style.display='';
+    badge.classList.remove('visible');
+    // Ve: dashboard, mapa, vendedores (solo suyos), dinero (solo suyos), registrar abono (solo suyos)
+    document.querySelectorAll('.tab').forEach(t=>{
+      const txt=t.textContent.trim();
+      const visibles=['Tablero principal','Lista numérica','Vendedores','Dinero por recoger','Registrar abono'];
+      if(visibles.includes(txt))t.style.display='';
+    });
   }
+
+  // Si la pestaña activa quedó oculta, ir a dashboard
+  const activeTab=document.querySelector('.tab.active');
+  if(activeTab&&activeTab.style.display==='none'){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+    const primerTab=document.querySelector('.tab:not([style*="display: none"])');
+    if(primerTab){primerTab.classList.add('active');primerTab.click();}
+    else{document.getElementById('tab-dashboard').classList.add('active');renderDash();}
+  }
+  renderDash();
+}
+function cambiarPassSocio(sid){
+  const nueva=document.getElementById('pass-socio-'+sid).value;
+  if(!nueva||nueva.length<3){alert('Mínimo 3 caracteres');return;}
+  CFG['passSocio_'+sid]=nueva;saveAndSync();
+  document.getElementById('pass-socio-'+sid).value='';
+  alert('Contraseña actualizada');renderAdmon();
+}
+function cambiarPassPerfil(campo,inputId){
+  const nueva=document.getElementById(inputId).value;
+  if(!nueva||nueva.length<3){alert('Mínimo 3 caracteres');return;}
+  CFG[campo]=nueva;saveAndSync();document.getElementById(inputId).value='';
+  alert('Contraseña actualizada');renderAdmon();
 }
 function cambiarPassword(){
   const actual=document.getElementById('s-pass-actual').value;
@@ -741,7 +842,13 @@ function vsRefresh(){
 
 // ═══════════════════════════════ TABS
 function goTab(id,el){
-  if(!isAdmin&&['directas','abonos','abonados','admon'].includes(id))return;
+  const tabsAdmin=['directas','abonos','historial','abonados','admon'];
+  const tabsSocio=['dashboard','mapa','vendedores','dinero','abonos-rapido'];
+  const tabsPadre=['dashboard','mapa','vendedores','dinero','abonos-rapido','historial'];
+  if(perfilActivo==='publico'&&!['dashboard','mapa'].includes(id))return;
+  if(perfilActivo==='socio'&&!tabsSocio.includes(id))return;
+  if(perfilActivo==='padre'&&!tabsPadre.includes(id)&&tabsAdmin.includes(id))return;
+  if(perfilActivo!=='admin'&&tabsAdmin.includes(id)&&perfilActivo!=='padre')return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   el.classList.add('active');
@@ -885,7 +992,12 @@ function renderVendedores(){
   const buscar=(document.getElementById('v-buscar')||{}).value?.toLowerCase()||'';
   const cont=document.getElementById('vendedores-lista');
   if(!V.length){cont.innerHTML='<div class="card"><div class="empty">Sin vendedores registrados</div></div>';return;}
-  let listaV=sortV(V);if(buscar)listaV=listaV.filter(v=>v.nombre.toLowerCase().includes(buscar));
+  let listaV=sortV(V);
+  // Si es socio, solo ve sus vendedores y él mismo
+  if(perfilActivo==='socio'&&socioActivoId){
+    listaV=listaV.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
+  }
+  if(buscar)listaV=listaV.filter(v=>v.nombre.toLowerCase().includes(buscar));
   if(!listaV.length){cont.innerHTML='<div class="card"><div class="empty">Sin coincidencias</div></div>';return;}
 
   // Actualizar selector de socios en formulario
@@ -1724,6 +1836,10 @@ function renderDinero(){
   if(dineroTab==='vendedores'){
     if(!V.length){cont.innerHTML='<div class="empty">Sin vendedores</div>';return;}
     let lista=sortV(V);
+    // Socio solo ve sus vendedores
+    if(perfilActivo==='socio'&&socioActivoId){
+      lista=lista.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
+    }
     if(buscar)lista=lista.filter(v=>v.nombre.toLowerCase().includes(buscar));
     lista=lista.filter(v=>{const{neto}=netoV(v);const ab=(ABV[v.id]||[]).reduce((a,x)=>a+x.monto,0);const saldo=neto-ab;if(filtroE==='pendiente')return saldo>0;if(filtroE==='aldia')return saldo<=0;return true;});
     const totNeto=lista.reduce((a,v)=>a+netoV(v).neto,0);
@@ -1817,66 +1933,102 @@ function renderDash(){
   const recPaq=PAQ.filter(p=>p.pagado).reduce((a,p)=>a+p.total,0);
   const recInd=Object.entries(B).filter(([,b])=>b.tipo==='individual'&&b.pagado).reduce((a,[,b])=>a+(prec()-(b.descuento||0)),0);
 
-  document.getElementById('metrics').innerHTML=`
-    <div class="met"><div class="ml">Asignados vendedores</div><div class="mv">${numV}</div><div class="ms">de 1000 números</div></div>
-    <div class="met teal"><div class="ml">Vendidas RC&amp;R</div><div class="mv">${numInd+numPaqNums}</div><div class="ms">Individuales: ${numInd} · Paquetes: ${numPaqNums}</div></div>
-    <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">${abonCountReal} abonados por confirmar</div></div>
-    <div class="met amber"><div class="ml">Saldo por recoger</div><div class="mv" style="font-size:16px">${fmt(saldoTotal)}</div><div class="ms">total pendiente</div></div>
-    <div class="met green"><div class="ml">Total recaudado</div><div class="mv" style="font-size:16px">${fmt(totalAb)}</div><div class="ms">abonos confirmados</div>${totalPendiente>0?`<div style="margin-top:5px;font-size:11px;font-family:var(--mono);color:var(--amber);font-weight:600">+ ${fmt(totalPendiente)} por confirmar</div>`:''}</div>
-  `;
+  // Métricas según perfil
+  if(perfilActivo==='publico'||perfilActivo==='socio'){
+    document.getElementById('metrics').innerHTML=`
+      <div class="met amber"><div class="ml">Boletas asignadas a vendedores</div><div class="mv">${numV+numInd+numPaqNums}</div><div class="ms">de 1000 números</div></div>
+      <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">disponibles</div></div>
+    `;
+  } else {
+    document.getElementById('metrics').innerHTML=`
+      <div class="met"><div class="ml">Asignados vendedores</div><div class="mv">${numV}</div><div class="ms">de 1000 números</div></div>
+      <div class="met teal"><div class="ml">Vendidas RC&amp;R</div><div class="mv">${numInd+numPaqNums}</div><div class="ms">Individuales: ${numInd} · Paquetes: ${numPaqNums}</div></div>
+      <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">${abonCountReal} abonados por confirmar</div></div>
+      <div class="met amber"><div class="ml">Saldo por recoger</div><div class="mv" style="font-size:16px">${fmt(saldoTotal)}</div><div class="ms">total pendiente</div></div>
+      <div class="met green"><div class="ml">Total recaudado</div><div class="mv" style="font-size:16px">${fmt(totalAb)}</div><div class="ms">abonos confirmados</div>${totalPendiente>0?`<div style="margin-top:5px;font-size:11px;font-family:var(--mono);color:var(--amber);font-weight:600">+ ${fmt(totalPendiente)} por confirmar</div>`:''}</div>
+    `;
+  }
 
   const pctA=Math.round((total-libre)/total*100);
-  // Barras de progreso por vendedor para estado general
-  const vendBars = sortV(V).map(v=>{
-    const{neto,count}=netoV(v);
-    const ab=(ABV[v.id]||[]).reduce((a,x)=>a+x.monto,0);
-    const saldo=Math.max(0,neto-ab);
-    const pct2=neto>0?Math.min(100,Math.round(ab/neto*100)):0;
-    return `<div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-        <span style="font-weight:600">${v.nombre} <span style="font-weight:400;color:var(--text3)">(${count} bol.)</span></span>
-        <span style="font-family:var(--mono);font-size:11px;color:${saldo<=0?'var(--accent)':'var(--amber)'}">${saldo<=0?'Al día ✓':fmt(saldo)+' pend.'}</span>
+
+  if(perfilActivo==='publico'||perfilActivo==='socio'){
+    // Tablero básico: solo barra de progreso
+    document.getElementById('dash-e').innerHTML=`
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+          <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
+          <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
+        </div>
+        <div class="prog-wrap" style="height:8px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
       </div>
-      <div class="prog-wrap"><div class="prog-fill" style="width:${pct2}%;background:var(--accent)"></div></div>
-    </div>`;
-  }).join('');
-  document.getElementById('dash-e').innerHTML=`
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:1.25rem">
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Vendedores</div>
-        <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${V.length}</div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${numV} boletas asignadas</div>
+    `;
+  } else {
+    // Tablero completo: admin y padre
+    const vendBars = sortV(V).map(v=>{
+      const{neto,count}=netoV(v);
+      const ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+      const saldo=Math.max(0,neto-ab);
+      const pct2=neto>0?Math.min(100,Math.round(ab/neto*100)):0;
+      return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="font-weight:600">${v.nombre} <span style="font-weight:400;color:var(--text3)">(${count} bol.)</span></span>
+          <span style="font-family:var(--mono);font-size:11px;color:${saldo<=0?'var(--accent)':'var(--amber)'}">${saldo<=0?'Al día ✓':fmt(saldo)+' pend.'}</span>
+        </div>
+        <div class="prog-wrap"><div class="prog-fill" style="width:${pct2}%;background:var(--accent)"></div></div>
+      </div>`;
+    }).join('');
+    document.getElementById('dash-e').innerHTML=`
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:1.25rem">
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Vendedores</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${V.length}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${numV} boletas asignadas</div>
+        </div>
+        <div style="background:var(--teal-bg);border:1px solid #8acac8;border-radius:var(--r);padding:.7rem 1rem">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--teal);margin-bottom:4px">RC&R</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--teal)">${numInd+numPaqNums}</div>
+          <div style="font-size:11px;color:var(--teal);font-family:var(--mono)">Ind: ${numInd} · Paq: ${numPaqNums}</div>
+        </div>
+        <div style="background:var(--gold-bg);border:1px solid #c8a830;border-radius:var(--r);padding:.7rem 1rem">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">Por confirmar</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--gold)">${abonPorConfirmar}</div>
+          <div style="font-size:11px;color:var(--gold);font-family:var(--mono)">abonados</div>
+        </div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Libres</div>
+          <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${libre}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">de 1000</div>
+        </div>
       </div>
-      <div style="background:var(--teal-bg);border:1px solid #8acac8;border-radius:var(--r);padding:.7rem 1rem">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--teal);margin-bottom:4px">RC&R</div>
-        <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--teal)">${numInd+numPaqNums}</div>
-        <div style="font-size:11px;color:var(--teal);font-family:var(--mono)">Ind: ${numInd} · Paq: ${numPaqNums}</div>
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+          <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
+          <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
+        </div>
+        <div class="prog-wrap" style="height:7px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
       </div>
-      <div style="background:var(--gold-bg);border:1px solid #c8a830;border-radius:var(--r);padding:.7rem 1rem">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">Por confirmar</div>
-        <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--gold)">${abonPorConfirmar}</div>
-        <div style="font-size:11px;color:var(--gold);font-family:var(--mono)">abonados</div>
-      </div>
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
-        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Libres</div>
-        <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${libre}</div>
-        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">de 1000</div>
-      </div>
-    </div>
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-        <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
-        <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
-      </div>
-      <div class="prog-wrap" style="height:7px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
-    </div>
-    ${vendBars?`<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Saldo por vendedor</div>${vendBars}`:''}
-  `;
+      ${vendBars?`<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Saldo por vendedor</div>${vendBars}`:''}
+    `;
+  }
 }
 
 // ═══════════════════════════════ ADMON
 function renderAdmon(){
   refreshSelects();
+  // Mostrar gestión de contraseñas de socios
+  const passSocios=document.getElementById('pass-socios-admin');
+  if(passSocios){
+    const socios=sortV(V.filter(v=>v.esSocio));
+    passSocios.innerHTML=socios.map(s=>`
+      <div style="margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">★ ${s.nombre}</div>
+        <div class="fr">
+          <input id="pass-socio-${s.id}" type="password" placeholder="Nueva contraseña" style="flex:1">
+          <button class="btn" onclick="cambiarPassSocio(${s.id})">Cambiar</button>
+        </div>
+        <p style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)">Actual: <strong>${CFG['passSocio_'+s.id]||s.nombre.split(' ')[0].toLowerCase()}</strong></p>
+      </div>`).join('');
+  }
   const sp=document.getElementById('s-precio-actual');if(sp)sp.textContent=`Precio actual: ${fmt(prec())} por boleta`;
   const snom=document.getElementById('s-nombre');if(snom)snom.value=CFG.nombre||'';
   const spre=document.getElementById('s-precio');if(spre)spre.value=CFG.precio||50;
@@ -2257,7 +2409,7 @@ function renderHistorial(){
 
 // Nombre JSON con fecha y hora
 // ═══════════════════════════════ INIT
-applyProfile();
+perfilActivo='publico';isAdmin=false;socioActivoId=null;
 refreshSelects();
 // Cargar desde la nube al inicio, luego renderizar
 // Pequeño retraso para asegurar que el navegador esté listo para fetch externo
