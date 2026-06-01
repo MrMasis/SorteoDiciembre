@@ -791,7 +791,8 @@ function addV(){
   const n=document.getElementById('v-nom').value.trim();
   if(!n){alert('Ingresa el nombre');return;}
   const esSocio=document.getElementById('v-es-socio').checked;
-  const socioId=document.getElementById('v-socio-id').value||null;
+  const socioIdRaw=document.getElementById('v-socio-id').value||null;
+  const socioId=socioIdRaw?parseInt(socioIdRaw):null;
   V.push({id:Date.now(),nombre:n,telefono:document.getElementById('v-tel').value.trim(),
     comision:parseFloat(document.getElementById('v-com').value)||20,
     esSocio,socioId:esSocio?null:socioId});
@@ -895,15 +896,26 @@ function renderVendedores(){
   }
 
   // Separar socios, vendedores con socio y vendedores sin socio
-  const socios=listaV.filter(v=>v.esSocio);
+  const socios=sortV(V.filter(v=>v.esSocio)); // siempre mostrar todos los socios
   const sinSocio=listaV.filter(v=>!v.esSocio&&!v.socioId);
   let html='';
 
   // Socios con sus vendedores agrupados
   socios.forEach(socio=>{
-    const vendedoresSocio=sortV(V.filter(v=>v.socioId===socio.id));
-    const totalNeto=netoV(socio).neto+vendedoresSocio.reduce((a,v)=>a+netoV(v).neto,0);
-    const totalBoletas=netoV(socio).count+vendedoresSocio.reduce((a,v)=>a+netoV(v).count,0);
+    // Filtrar vendedores del socio respetando el buscador
+    const vendedoresSocio=sortV(V.filter(v=>v.socioId===socio.id&&(!buscar||v.nombre.toLowerCase().includes(buscar))));
+    const vendedoresSocioAll=sortV(V.filter(v=>v.socioId===socio.id));
+    const netoSocioDirecto=netoV(socio).neto;
+    const netoVendedores=vendedoresSocioAll.reduce((a,v)=>a+netoV(v).neto,0);
+    const totalNeto=netoSocioDirecto+netoVendedores;
+    const totalBoletas=netoV(socio).count+vendedoresSocioAll.reduce((a,v)=>a+netoV(v).count,0);
+    // Neto a entregar = neto vendedores (el socio ya cobró su 20% extra sobre ellos)
+    // Por cada vendedor: precio_boleta × count_boletas × (1 - comision_vendedor/100)
+    // El socio ya se queda con la diferencia entre su 40% y el 20% del vendedor
+    const netoAEntregar=netoSocioDirecto+vendedoresSocioAll.reduce((a,v)=>{
+      const cnt=Object.keys(B).filter(k=>B[k].tipo==='vendedor'&&B[k].vid===v.id).length;
+      return a+cnt*prec()*(1-socio.comision/100); // lo que el sistema recibe por esos vendedores
+    },0);
     html+=`<div style="margin-bottom:1.25rem">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:var(--text);color:var(--bg);border-radius:var(--rl) var(--rl) 0 0;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:10px">
@@ -912,16 +924,17 @@ function renderVendedores(){
           <span style="font-size:11px;opacity:.5;font-family:var(--mono)">${socio.comision}% com.</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-family:var(--mono);font-size:12px;opacity:.7">${totalBoletas} boletas · Neto grupo: ${fmt(totalNeto)}</span>
+          <span style="font-family:var(--mono);font-size:12px;opacity:.7">${totalBoletas} boletas</span>
+          <span style="font-family:var(--mono);font-size:12px;opacity:.7">Neto grupo: ${fmt(totalNeto)}</span>
+          <span style="font-family:var(--mono);font-size:12px;color:#aacab6;font-weight:600">→ A entregar: ${fmt(netoAEntregar)}</span>
           ${isAdmin?`<button class="btn btn-sm" style="background:transparent;color:var(--bg);border-color:rgba(255,255,255,.3)" onclick="editarVendedor(${socio.id})">Editar</button>
           <button class="btn btn-sm" style="background:transparent;color:var(--bg);border-color:rgba(255,255,255,.3)" onclick="gestionarNumsVendedor(${socio.id})">+ Números</button>
           <button class="btn btn-sm btn-d" style="color:#f5dddd;border-color:rgba(255,100,100,.4)" onclick="removeV(${socio.id})">Eliminar</button>`:''}
         </div>
       </div>
       <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--rl) var(--rl);overflow:hidden;background:var(--bg);padding:.75rem">
-        ${vendedorCardHtml(socio)}
         ${vendedoresSocio.length?vendedoresSocio.map(v=>vendedorCardHtml(v)).join('')
-        :'<div style="font-size:12px;color:var(--text3);padding:.5rem .5rem">Sin vendedores vinculados</div>'}
+        :'<div style="font-size:12px;color:var(--text3);padding:.5rem .5rem">Sin vendedores vinculados aún</div>'}
       </div>
     </div>`;
   });
@@ -1951,7 +1964,7 @@ function importarJSON(e){
 }
 
 // ═══════════════════════════════ SYNC CON GOOGLE SHEETS
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzf2-JZlFn6kBE3v62iIxWfOcnElqfEVo0AOaQv8NdGaqKLkIW7A_6aNLer2miKukfU/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw9RjqwWWVrKzK2ac4B6WiFimQSMOooHmVqE73-sHF5MHT4ZThqUu3CG3BcKuTtXFJfSA/exec';
 
 function showSyncStatus(msg, color){
   let el = document.getElementById('sync-status');
