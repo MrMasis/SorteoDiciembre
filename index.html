@@ -573,12 +573,12 @@ tbody tr:hover td{background:var(--bg)}
           </div>
         </div>
         <div style="margin-bottom:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Padre</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Rigo</div>
           <div class="fr">
-            <input id="s-pass-padre-nueva" type="password" placeholder="Nueva contraseña padre" style="flex:1">
+            <input id="s-pass-padre-nueva" type="password" placeholder="Nueva contraseña Rigo" style="flex:1">
             <button class="btn" onclick="cambiarPassPerfil('passPadre','s-pass-padre-nueva')">Cambiar</button>
           </div>
-          <p style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)">Actual: <strong>${CFG.passPadre||'padre'}</strong></p>
+          <div id="pass-padre-actual" style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)"></div>
         </div>
         <div id="pass-socios-admin"></div>
         <p style="font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono)">Contraseña admin por defecto: <strong>1234</strong></p>
@@ -747,7 +747,7 @@ function applyProfile(){
     document.querySelectorAll('.admin-control').forEach(el=>{el.style.removeProperty('display');});
 
   } else if(perfilActivo==='padre'){
-    perfilBtn.textContent='👨 Padre';perfilBtn.classList.add('active');
+    perfilBtn.textContent='Rigo';perfilBtn.classList.add('active');
     if(salirBtn)salirBtn.style.display='';
     badge.classList.remove('visible');
     // Ve todo excepto ADMON, Vendidas RC&R, Abonos, Historial, Números abonados
@@ -2011,6 +2011,9 @@ function renderDash(){
 // ═══════════════════════════════ ADMON
 function renderAdmon(){
   refreshSelects();
+  // Mostrar contraseña actual de Rigo
+  const padreActual=document.getElementById('pass-padre-actual');
+  if(padreActual)padreActual.innerHTML=`Actual: <strong>${CFG.passPadre||'padre'}</strong>`;
   // Mostrar gestión de contraseñas de socios
   const passSocios=document.getElementById('pass-socios-admin');
   if(passSocios){
