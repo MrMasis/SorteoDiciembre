@@ -780,7 +780,7 @@ function applyProfile(){
     // Solo: dashboard, mapa, vendedores, dinero, registrar abono, mis ventas
     document.querySelectorAll('.tab').forEach(t=>{
       const fn=t.getAttribute('onclick')||'';
-      const visibles=["'dashboard'","'mapa'","'vendedores'","'dinero'","'abonos-rapido'","'mis-ventas'"];
+      const visibles=["'dashboard'","'mapa'","'vendedores'","'abonos-rapido'","'mis-ventas'"];
       if(visibles.some(v=>fn.includes(v)))t.style.display='';
     });
   }
@@ -852,7 +852,7 @@ function vsRefresh(){
 // ═══════════════════════════════ TABS
 function goTab(id,el){
   const tabsAdmin=['directas','abonos','historial','abonados','admon'];
-  const tabsSocio=['dashboard','mapa','vendedores','dinero','abonos-rapido','mis-ventas'];
+  const tabsSocio=['dashboard','mapa','vendedores','abonos-rapido','mis-ventas'];
   const tabsPadre=['dashboard','mapa','vendedores','dinero','abonos-rapido','historial'];
   if(perfilActivo==='publico'&&!['dashboard','mapa'].includes(id))return;
   if(perfilActivo==='socio'&&!tabsSocio.includes(id))return;
@@ -2335,7 +2335,15 @@ function renderAbonosRapido(){
   }
   vendAbono.forEach(v=>{
     const{neto}=netoV(v);
-    const ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+    let ab=0;
+    if(perfilActivo==='socio'&&socioActivoId){
+      // Usar abonos internos del SOCIO_DATA
+      const sid=socioActivoId;
+      const abonosInt=(SOCIO_DATA[sid]?.abonosVendedores?.[String(v.id)]||[]).reduce((s,a)=>s+a.monto,0);
+      ab=abonosInt;
+    } else {
+      ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+    }
     items.push({tipo:'v',id:v.id,nombre:v.nombre,sub:v.telefono||'',saldo:Math.max(0,neto-ab)});
   });
   // Individuales y paquetes: solo para admin y padre, no para socios
@@ -2367,8 +2375,23 @@ function registrarAbonoRapido(tipo,id,nombre){
     const monto=parseFloat(document.getElementById('rapido-monto').value);
     if(isNaN(monto)||monto<=0){alert('Monto inválido');return;}
     const nota=document.getElementById('rapido-nota').value.trim();
-    const abono={id:Date.now().toString(),monto,nota,fecha:today(),pendiente:true};
-    if(tipo==='v'){const key=String(id);if(!ABV[key])ABV[key]=[];ABV[key].push(abono);}
+    // Si es socio: abono interno confirmado automáticamente (no aparece en admin)
+    // Si es público/padre: pendiente de confirmación
+    const esSocioAbono = perfilActivo==='socio';
+    const abono={id:Date.now().toString(),monto,nota,fecha:today(),pendiente:!esSocioAbono,interno:esSocioAbono};
+    if(tipo==='v'){
+      const key=String(id);
+      if(esSocioAbono){
+        // Guardar en SOCIO_DATA como abono interno, no en ABV global
+        const sid=socioActivoId;
+        if(!SOCIO_DATA[sid])SOCIO_DATA[sid]={ventas:{},abonos:{},abonosVendedores:{}};
+        if(!SOCIO_DATA[sid].abonosVendedores)SOCIO_DATA[sid].abonosVendedores={};
+        if(!SOCIO_DATA[sid].abonosVendedores[key])SOCIO_DATA[sid].abonosVendedores[key]=[];
+        SOCIO_DATA[sid].abonosVendedores[key].push(abono);
+      } else {
+        if(!ABV[key])ABV[key]=[];ABV[key].push(abono);
+      }
+    }
     else if(tipo==='i'){if(!ABI[id])ABI[id]=[];ABI[id].push(abono);}
     else if(tipo==='p'){if(!ABP[id])ABP[id]=[];ABP[id].push(abono);}
     saveAndSync();renderAbonosRapido();
@@ -2427,6 +2450,23 @@ function renderHistorial(){
 // Nombre JSON con fecha y hora
 
 // ═══════════════════════════════ SISTEMA INTERNO SOCIOS
+function entregarDineroAdmin(){
+  const socio=V.find(v=>v.id===socioActivoId);
+  if(!socio)return;
+  showModal(`Entregar dinero — ${socio.nombre}`,'Este monto aparecerá como abono pendiente de confirmación en el sistema del administrador.',()=>{
+    const monto=parseFloat(document.getElementById('ed-monto').value);
+    if(isNaN(monto)||monto<=0){alert('Monto inválido');return;}
+    const metodo=document.getElementById('ed-metodo').value;
+    const abono={id:Date.now().toString(),monto,nota:metodo,fecha:today(),pendiente:true};
+    const key=String(socioActivoId);
+    if(!ABV[key])ABV[key]=[];
+    ABV[key].push(abono);
+    saveAndSync();
+    showToast(`✓ ${fmt(monto)} registrado como pendiente de entrega`);
+    renderMisVentas();
+  },`<div class="modal-field"><label>Monto a entregar (€)</label><input id="ed-monto" type="number" min="0" style="width:100%"></div>
+     <div class="modal-field"><label>Método</label><select id="ed-metodo" style="width:100%"><option value="Efectivo">Efectivo</option><option value="Bizum">Bizum</option></select></div>`,'Confirmar entrega');
+}
 function getSocioData(sid){
   if(!SOCIO_DATA[sid])SOCIO_DATA[sid]={ventas:{},abonos:{}};
   return SOCIO_DATA[sid];
@@ -2440,7 +2480,8 @@ function renderMisVentas(){
   const cont=document.getElementById('mis-ventas-lista');
 
   // Mis números asignados como vendedor
-  const misNums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&b.vid===sid)
+  // Comparar tanto número como string para evitar bug de tipo
+  const misNums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&(b.vid===sid||b.vid===String(sid)||String(b.vid)===String(sid)))
     .sort(([a],[b])=>a.localeCompare(b));
 
   if(!misNums.length){
@@ -2465,6 +2506,13 @@ function renderMisVentas(){
     <div class="met" style="flex:1;min-width:120px"><div class="ml">Mis números</div><div class="mv">${filtrados.length}</div></div>
     <div class="met teal" style="flex:1;min-width:120px"><div class="ml">Vendidos</div><div class="mv">${vendidos}</div></div>
     <div class="met amber" style="flex:1;min-width:120px"><div class="ml">Sin vender</div><div class="mv">${filtrados.length-vendidos}</div></div>
+  </div>
+  <div style="margin-bottom:1rem;padding:1rem;background:var(--accent-bg);border:1px solid #aacab6;border-radius:var(--rl);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--accent)">Entregar dinero al administrador</div>
+      <div style="font-size:12px;color:var(--text2)">Registra el monto que vas a entregar. Quedará pendiente de confirmación.</div>
+    </div>
+    <button class="btn btn-g" onclick="entregarDineroAdmin()">💰 Entregar dinero</button>
   </div>`;
 
   html+=filtrados.map(([k])=>{
