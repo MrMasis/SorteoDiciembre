@@ -1035,6 +1035,7 @@ function renderVendedores(){
         </div>
       </div>
       <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--rl) var(--rl);overflow:hidden;background:var(--bg);padding:.75rem">
+        ${vendedorCardHtml(socio)}
         ${vendedoresSocio.length?vendedoresSocio.map(v=>vendedorCardHtml(v)).join('')
         :'<div style="font-size:12px;color:var(--text3);padding:.5rem .5rem">Sin vendedores vinculados aún</div>'}
       </div>
@@ -1060,12 +1061,11 @@ function buscarNumero(){
   const k=pad(n);
   const isAbon=!!ABON[k];const b=B[k];
   res.classList.add('visible');
-  if(isAbon){
-    const conf=ABON[k].confirmado&&B[k];
+  if(isAbon&&!B[k]){
+    // Abonado pero no confirmado en RC&R — mostrar como libre/abonado sin detalles
     res.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-family:var(--mono);font-weight:700;font-size:18px;color:var(--gold)">${k}</span>
       <span class="badge bgold">★ Abonado</span>
-      ${conf?'<span class="badge bg">Confirmado en RC&R</span>':'<span class="badge ba">Por confirmar</span>'}
       <span style="font-weight:600">${ABON[k].titular}</span>
     </div>`;
   } else if(b){
@@ -2309,20 +2309,27 @@ function renderAbonosRapido(){
   const elBz=document.getElementById('total-hoy-bizum');if(elBz)elBz.textContent=fmt(totalBizum);
   // Construir lista: vendedores + individuales + paquetes
   let items=[];
-  sortV(V).forEach(v=>{
+  let vendAbono=sortV(V);
+  if(perfilActivo==='socio'&&socioActivoId){
+    vendAbono=vendAbono.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
+  }
+  vendAbono.forEach(v=>{
     const{neto}=netoV(v);
-    const ab=(ABV[v.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+    const ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
     items.push({tipo:'v',id:v.id,nombre:v.nombre,sub:v.telefono||'',saldo:Math.max(0,neto-ab)});
   });
-  Object.entries(B).filter(([,b])=>b.tipo==='individual').sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente)).forEach(([k,b])=>{
-    const total=prec()-(b.descuento||0);
-    const ab=(ABI[k]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
-    items.push({tipo:'i',id:k,nombre:b.cliente,sub:`Boleta ${k}`,saldo:Math.max(0,total-ab)});
-  });
-  [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).forEach(p=>{
-    const ab=(ABP[p.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
-    items.push({tipo:'p',id:p.id,nombre:p.cliente,sub:`Paquete ×${p.nums.length}`,saldo:Math.max(0,p.total-ab)});
-  });
+  // Individuales y paquetes: solo para admin y padre, no para socios
+  if(perfilActivo!=='socio'){
+    Object.entries(B).filter(([,b])=>b.tipo==='individual').sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente)).forEach(([k,b])=>{
+      const total=prec()-(b.descuento||0);
+      const ab=(ABI[k]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+      items.push({tipo:'i',id:k,nombre:b.cliente,sub:`Boleta ${k}`,saldo:Math.max(0,total-ab)});
+    });
+    [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).forEach(p=>{
+      const ab=(ABP[p.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+      items.push({tipo:'p',id:p.id,nombre:p.cliente,sub:`Paquete ×${p.nums.length}`,saldo:Math.max(0,p.total-ab)});
+    });
+  }
   if(buscar)items=items.filter(i=>i.nombre.toLowerCase().includes(buscar)||i.sub.toLowerCase().includes(buscar));
   if(!items.length){cont.innerHTML='<div class="empty">Sin resultados</div>';return;}
   cont.innerHTML=items.map(it=>`
