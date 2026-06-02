@@ -231,6 +231,7 @@ tbody tr:hover td{background:var(--bg)}
   <button class="tab admin-only" onclick="goTab('directas',this)">Vendidas RC&amp;R</button>
   <button class="tab" onclick="goTab('dinero',this)">Dinero por recoger</button>
   <button class="tab" onclick="goTab('abonos-rapido',this)">Registrar abono</button>
+  <button class="tab socio-only" onclick="goTab('mis-ventas',this)" style="display:none">Mis ventas</button>
   <button class="tab admin-only" onclick="goTab('abonos',this)">Abonos</button>
   <button class="tab admin-only" onclick="goTab('historial',this)">Historial</button>
   <button class="tab admin-only" onclick="goTab('abonados',this)">Números abonados</button>
@@ -460,6 +461,21 @@ tbody tr:hover td{background:var(--bg)}
   <div id="dinero-contenido"></div>
 </div>
 
+<!-- ══════════════════════ MIS VENTAS (solo socios) -->
+<div id="tab-mis-ventas" class="section">
+  <div class="card" style="background:var(--blue-bg);border-color:#8aaad0">
+    <div style="font-size:13px;color:var(--blue);font-weight:600;margin-bottom:4px">Gestión interna de mis ventas</div>
+    <div style="font-size:12px;color:var(--text2)">Aquí puedes registrar a quién vendiste cada número y gestionar sus abonos. Esta información es privada y solo visible para ti.</div>
+  </div>
+  <div class="card">
+    <div class="ctitle">Mis números y compradores</div>
+    <div class="search-bar">
+      <input id="misventas-buscar" placeholder="Buscar número o comprador..." oninput="renderMisVentas()">
+    </div>
+    <div id="mis-ventas-lista"></div>
+  </div>
+</div>
+
 <!-- ══════════════════════ REGISTRAR ABONO RÁPIDO (público) -->
 <div id="tab-abonos-rapido" class="section">
   <div class="card" style="background:var(--accent-bg);border-color:#aacab6">
@@ -638,6 +654,9 @@ let ABI  = JSON.parse(localStorage.getItem('st8_abi')  || '{}');
 let ABP  = JSON.parse(localStorage.getItem('st8_abp')  || '{}');
 let ABON = JSON.parse(localStorage.getItem('st8_abon') || '{}');
 let ABPAQ= JSON.parse(localStorage.getItem('st8_abpaq')|| '[]');
+// SOCIO_DATA: datos internos de cada socio {socioId: {ventas:{num:{cliente,descuento,pagado}}, abonos:{num:[{id,monto,nota,fecha}]}}}
+let SOCIO_DATA = JSON.parse(localStorage.getItem('st8_socio_data') || '{}');
+
 let CFG  = JSON.parse(localStorage.getItem('st8_cfg')  || '{"nombre":"Sorteo","precio":50,"ganador":null,"pass":"1234","passPadre":"padre","passGustavo":"gustavo","passBreyner":"breyner"}');
 
 let sel = new Set();
@@ -670,6 +689,7 @@ const save = () => {
   localStorage.setItem('st8_abon', JSON.stringify(ABON));
   localStorage.setItem('st8_abpaq',JSON.stringify(ABPAQ));
   localStorage.setItem('st8_cfg',  JSON.stringify(CFG));
+  localStorage.setItem('st8_socio_data', JSON.stringify(SOCIO_DATA));
 };
 const pad   = n => String(n).padStart(3,'0');
 const fmt   = n => '€' + Number(n).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -757,10 +777,10 @@ function applyProfile(){
     perfilBtn.textContent=`★ ${socio?socio.nombre.split(' ')[0]:'Socio'}`;perfilBtn.classList.add('active');
     if(salirBtn)salirBtn.style.display='';
     badge.classList.remove('visible');
-    // Solo: dashboard, mapa, vendedores, dinero, registrar abono
+    // Solo: dashboard, mapa, vendedores, dinero, registrar abono, mis ventas
     document.querySelectorAll('.tab').forEach(t=>{
       const fn=t.getAttribute('onclick')||'';
-      const visibles=["'dashboard'","'mapa'","'vendedores'","'dinero'","'abonos-rapido'"];
+      const visibles=["'dashboard'","'mapa'","'vendedores'","'dinero'","'abonos-rapido'","'mis-ventas'"];
       if(visibles.some(v=>fn.includes(v)))t.style.display='';
     });
   }
@@ -832,7 +852,7 @@ function vsRefresh(){
 // ═══════════════════════════════ TABS
 function goTab(id,el){
   const tabsAdmin=['directas','abonos','historial','abonados','admon'];
-  const tabsSocio=['dashboard','mapa','vendedores','dinero','abonos-rapido'];
+  const tabsSocio=['dashboard','mapa','vendedores','dinero','abonos-rapido','mis-ventas'];
   const tabsPadre=['dashboard','mapa','vendedores','dinero','abonos-rapido','historial'];
   if(perfilActivo==='publico'&&!['dashboard','mapa'].includes(id))return;
   if(perfilActivo==='socio'&&!tabsSocio.includes(id))return;
@@ -2098,7 +2118,7 @@ function importarJSON(e){
     try{const d=JSON.parse(ev.target.result);
       showModal('Importar respaldo','¿Reemplazar todos los datos con los del archivo?',()=>{
         V=d.V||[];B=d.B||{};PAQ=d.PAQ||[];ABV=d.ABV||{};ABI=d.ABI||{};ABP=d.ABP||{};
-        ABON=d.ABON||{};ABPAQ=d.ABPAQ||[];CFG=d.CFG||{nombre:'Sorteo',precio:50,ganador:null,pass:'1234'};
+        ABON=d.ABON||{};ABPAQ=d.ABPAQ||[];CFG=d.CFG||{nombre:'Sorteo',precio:50,ganador:null,pass:'1234'};SOCIO_DATA=d.SOCIO_DATA||{};SOCIO_DATA=d.SOCIO_DATA||{};
         saveAndSync();refreshSelects();renderDash();applyProfile();
       });
     }catch{alert('Error al leer el archivo');}
@@ -2118,7 +2138,7 @@ function showSyncStatus(msg, color){
 async function syncSave(){
   showSyncStatus('Guardando en la nube...','var(--amber)');
   try{
-    const payload={V,B,PAQ,ABV,ABI,ABP,ABON,ABPAQ,CFG};
+    const payload={V,B,PAQ,ABV,ABI,ABP,ABON,ABPAQ,CFG,SOCIO_DATA};
     const res=await fetch(GAS_URL,{
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -2405,6 +2425,135 @@ function renderHistorial(){
 }
 
 // Nombre JSON con fecha y hora
+
+// ═══════════════════════════════ SISTEMA INTERNO SOCIOS
+function getSocioData(sid){
+  if(!SOCIO_DATA[sid])SOCIO_DATA[sid]={ventas:{},abonos:{}};
+  return SOCIO_DATA[sid];
+}
+
+function renderMisVentas(){
+  if(perfilActivo!=='socio'||!socioActivoId)return;
+  const sid=socioActivoId;
+  const data=getSocioData(sid);
+  const buscar=(document.getElementById('misventas-buscar')||{}).value?.toLowerCase()||'';
+  const cont=document.getElementById('mis-ventas-lista');
+
+  // Mis números asignados como vendedor
+  const misNums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&b.vid===sid)
+    .sort(([a],[b])=>a.localeCompare(b));
+
+  if(!misNums.length){
+    cont.innerHTML='<div class="empty">No tienes números asignados aún</div>';return;
+  }
+
+  let html='';
+  const filtrados=misNums.filter(([k])=>{
+    if(!buscar)return true;
+    const venta=data.ventas[k];
+    return k.includes(buscar)||(venta&&venta.cliente.toLowerCase().includes(buscar));
+  });
+
+  // Resumen
+  const vendidos=filtrados.filter(([k])=>data.ventas[k]).length;
+  const totalRecaudar=filtrados.reduce(([k])=>{
+    const v=data.ventas[k];
+    return v?prec()-(v.descuento||0):0;
+  },0);
+
+  html+=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem">
+    <div class="met" style="flex:1;min-width:120px"><div class="ml">Mis números</div><div class="mv">${filtrados.length}</div></div>
+    <div class="met teal" style="flex:1;min-width:120px"><div class="ml">Vendidos</div><div class="mv">${vendidos}</div></div>
+    <div class="met amber" style="flex:1;min-width:120px"><div class="ml">Sin vender</div><div class="mv">${filtrados.length-vendidos}</div></div>
+  </div>`;
+
+  html+=filtrados.map(([k])=>{
+    const venta=data.ventas[k];
+    const abonos=(data.abonos[k]||[]);
+    const totalAbonado=abonos.reduce((s,a)=>s+a.monto,0);
+    const totalAPagar=venta?prec()-(venta.descuento||0):prec();
+    const saldo=venta?Math.max(0,totalAPagar-totalAbonado):0;
+
+    return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);margin-bottom:.75rem;overflow:hidden">
+      <div style="padding:.8rem 1.25rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-family:var(--mono);font-weight:700;font-size:16px;color:var(--blue)">${k}</span>
+          ${venta
+            ?`<div>
+                <span style="font-weight:600">${venta.cliente}</span>
+                ${venta.descuento?`<span style="font-size:11px;color:var(--text2);margin-left:6px">Desc: ${fmt(venta.descuento)}</span>`:''}
+                <span class="badge ${saldo<=0?'bg':'ba'}" style="margin-left:8px">${saldo<=0?'Al día ✓':fmt(saldo)+' pend.'}</span>
+              </div>`
+            :'<span style="color:var(--text3);font-size:13px">Sin comprador asignado</span>'}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${!venta
+            ?`<button class="btn btn-sm btn-g" onclick="asignarCompradorSocio('${k}')">+ Asignar comprador</button>`
+            :`<button class="btn btn-sm btn-g" onclick="registrarAbonoSocio('${k}')">+ Abono</button>
+              <button class="btn btn-sm" onclick="asignarCompradorSocio('${k}')">Editar</button>
+              <button class="btn btn-sm btn-d" onclick="quitarCompradorSocio('${k}')">✕</button>`}
+        </div>
+      </div>
+      ${venta&&abonos.length?`<div style="padding:.6rem 1.25rem;border-top:1px solid var(--border);background:var(--bg)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:5px">Abonos recibidos</div>
+        ${abonos.slice().reverse().map(a=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid var(--border)">
+          <span><strong style="font-family:var(--mono)">${fmt(a.monto)}</strong>${a.nota?` · <span style="color:var(--text2)">${a.nota}</span>`:''}</span>
+          <span style="font-family:var(--mono);color:var(--text3)">${a.fecha}</span>
+        </div>`).join('')}
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:5px;font-weight:600">
+          <span>Total abonado:</span><span style="font-family:var(--mono);color:var(--accent)">${fmt(totalAbonado)}</span>
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  cont.innerHTML=html;
+}
+
+function asignarCompradorSocio(k){
+  const sid=socioActivoId;
+  const data=getSocioData(sid);
+  const venta=data.ventas[k]||{};
+  showModal(`Asignar comprador — Número ${k}`,'',()=>{
+    const cliente=document.getElementById('sv-cliente').value.trim();
+    if(!cliente){alert('Ingresa el nombre');return;}
+    const desc=parseFloat(document.getElementById('sv-desc').value)||0;
+    data.ventas[k]={cliente,descuento:desc,pagado:false};
+    if(!data.abonos[k])data.abonos[k]=[];
+    saveAndSync();renderMisVentas();
+  },`<div class="modal-field"><label>Nombre del comprador</label><input id="sv-cliente" value="${venta.cliente||''}" style="width:100%"></div>
+     <div class="modal-field"><label>Descuento (€)</label><input id="sv-desc" type="number" min="0" value="${venta.descuento||0}" style="width:100%"></div>
+     <div class="modal-field"><label>Precio base: ${fmt(prec())}</label></div>`,'Guardar');
+}
+
+function quitarCompradorSocio(k){
+  showModal('Quitar comprador',`¿Quitar el comprador del número ${k}? Se eliminarán también sus abonos.`,()=>{
+    const data=getSocioData(socioActivoId);
+    delete data.ventas[k];
+    delete data.abonos[k];
+    saveAndSync();renderMisVentas();
+  });
+}
+
+function registrarAbonoSocio(k){
+  const data=getSocioData(socioActivoId);
+  const venta=data.ventas[k];
+  if(!venta)return;
+  showModal(`Registrar abono — ${venta.cliente} (${k})`,'',()=>{
+    const monto=parseFloat(document.getElementById('sa-monto').value);
+    if(isNaN(monto)||monto<=0){alert('Monto inválido');return;}
+    const nota=document.getElementById('sa-nota').value||'Efectivo';
+    if(!data.abonos[k])data.abonos[k]=[];
+    data.abonos[k].push({id:Date.now().toString(),monto,nota,fecha:today()});
+    // Verificar si ya pagó todo
+    const total=prec()-(venta.descuento||0);
+    const totalAb=data.abonos[k].reduce((s,a)=>s+a.monto,0);
+    data.ventas[k].pagado=totalAb>=total;
+    saveAndSync();renderMisVentas();
+  },`<div class="modal-field"><label>Monto (€)</label><input id="sa-monto" type="number" min="0" style="width:100%"></div>
+     <div class="modal-field"><label>Método</label><select id="sa-nota" style="width:100%"><option value="Efectivo">Efectivo</option><option value="Bizum">Bizum</option></select></div>`,'Registrar');
+}
+// ════════════════════════════════════════════════════════
 // ═══════════════════════════════ INIT
 perfilActivo='publico';isAdmin=false;socioActivoId=null;
 refreshSelects();
