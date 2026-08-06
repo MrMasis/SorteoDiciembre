@@ -272,9 +272,9 @@ tbody tr:hover td{background:var(--bg)}
         <div class="mode-bar">
           <button class="mode-btn active" id="mode-asig" onclick="setMode('asignar')">Asignar</button>
           <button class="mode-btn m-del" id="mode-del" onclick="setMode('desasignar')">Desasignar</button>
-          <button class="mode-btn" id="mode-reasig" onclick="setMode('reasignar')">Reasignar</button>
-        <button class="mode-btn" id="mode-pago" onclick="setMode('pago')">Cambiar pago</button>
-          <button class="mode-btn m-gold" id="mode-gold" onclick="setMode('abonado')">Marcar abonado</button>
+
+
+
         </div>
       </div>
       <div id="toolbar-asig" style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
@@ -325,6 +325,16 @@ tbody tr:hover td{background:var(--bg)}
         <p style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:6px">Modo desasignar — clic en números asignados. Los abonados no se pueden desasignar aquí.</p>
         <div class="fr">
           <button class="btn btn-warn" onclick="desasignarSel()">Desasignar (<span id="del-count">0</span>)</button>
+          <div style="margin-top:1rem">
+            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">Desasignar en bloque por texto</div>
+            <div class="fr" style="align-items:flex-start;gap:8px">
+              <div style="flex:1;min-width:200px">
+                <textarea id="texto-desal-nums" class="num-input-area" rows="3" placeholder="Números separados por comas, espacios o saltos&#10;Ej: 057, 159, 267" oninput="previewTextoDesal()" style="width:100%"></textarea>
+                <div class="num-preview" id="texto-desal-preview"></div>
+              </div>
+              <button class="btn btn-warn" onclick="confirmarTextoDesal()">Desasignar en bloque</button>
+            </div>
+          </div>
           <button class="btn" onclick="clearSel()">Cancelar</button>
         </div>
       </div>
@@ -449,6 +459,7 @@ tbody tr:hover td{background:var(--bg)}
     <button class="subtab active" onclick="goDineroTab('vendedores',this)">Vendedores</button>
     <button class="subtab" onclick="goDineroTab('paquetes',this)">Paquetes</button>
     <button class="subtab" onclick="goDineroTab('individuales',this)">Individuales</button>
+    <button class="btn btn-g btn-sm" onclick="exportarExcelDinero()" style="white-space:nowrap">📊 Exportar Excel</button>
   </div>
   <div class="search-bar">
     <input id="dinero-buscar" placeholder="Buscar por nombre..." oninput="renderDinero()">
@@ -629,6 +640,7 @@ tbody tr:hover td{background:var(--bg)}
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ═══════════════════════════════ ESTADO
 let V    = JSON.parse(localStorage.getItem('st8_v')    || '[]');
@@ -973,6 +985,7 @@ function vendedorCardHtml(v){
         </div>
         ${isAdmin?`<button class="btn btn-sm" onclick="editarVendedor(${v.id})">Editar</button>
         <button class="btn btn-sm" onclick="gestionarNumsVendedor(${v.id})">+ Números</button>
+        <button class="btn btn-sm btn-warn" onclick="limpiarNumerosVendedor(${v.id})">Limpiar números</button>
         <button class="btn btn-sm btn-d" onclick="removeV(${v.id})">Eliminar</button>`:''}
       </div>
     </div>
@@ -2439,6 +2452,90 @@ function renderHistorial(){
 // Nombre JSON con fecha y hora
 
 
+function previewTextoDesal(){
+  const raw=document.getElementById('texto-desal-nums').value;
+  const prev=document.getElementById('texto-desal-preview');
+  if(!prev)return;
+  if(!raw.trim()){prev.innerHTML='';return;}
+  const items=parsearNums(raw);
+  const validos=items.filter(i=>B[i.k]&&!ABON[i.k]);
+  prev.innerHTML=validos.length
+    ?`<span style="color:var(--accent)">${validos.length} numero(s) a liberar</span>`
+    :'<span style="color:var(--text3)">Sin numeros validos</span>';
+}
+function confirmarTextoDesal(){
+  const raw=document.getElementById('texto-desal-nums').value;
+  if(!raw.trim()){alert('Escribe los numeros a liberar');return;}
+  const items=parsearNums(raw);
+  const aLiberar=items.filter(i=>B[i.k]&&!ABON[i.k]);
+  if(!aLiberar.length){alert('No hay numeros asignados validos (los abonados estan protegidos)');return;}
+  showModal('Desasignar en bloque',`Liberar ${aLiberar.length} numero(s)?`,()=>{
+    aLiberar.forEach(({k})=>delete B[k]);
+    document.getElementById('texto-desal-nums').value='';
+    document.getElementById('texto-desal-preview').innerHTML='';
+    saveAndSync();renderMapa();renderVendedores();
+    showToast(`${aLiberar.length} numero(s) liberados`);
+  });
+}
+function limpiarNumerosVendedor(vid){
+  const v=V.find(v=>v.id===vid);if(!v)return;
+  const nums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&(String(b.vid)===String(vid)));
+  if(!nums.length){showToast('Este vendedor no tiene numeros asignados');return;}
+  showModal('Limpiar numeros',`Liberar los ${nums.length} numero(s) de ${v.nombre}? El vendedor no se eliminara.`,()=>{
+    nums.forEach(([k])=>delete B[k]);
+    saveAndSync();renderVendedores();renderMapa();
+    showToast(`${nums.length} numero(s) liberados de ${v.nombre}`);
+  });
+}
+function exportarExcelDinero(){
+  if(typeof XLSX==='undefined'){alert('La libreria de Excel no esta cargada.');return;}
+  const fmtN = n => Number(n).toFixed(2);
+  const hdrs = ['Nombre', 'Saldo pendiente (EUR)'];
+  const rowsV = sortV(V).map(v => {
+    const {neto} = netoV(v);
+    const ab = (ABV[v.id]||ABV[String(v.id)]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+    const saldo = Math.max(0, neto - ab);
+    return saldo > 0 ? [v.nombre, fmtN(saldo)] : null;
+  }).filter(Boolean);
+  const totV = rowsV.reduce((a,r)=>a+parseFloat(r[1]),0);
+  rowsV.push(['TOTAL', fmtN(totV)]);
+  const wsV = XLSX.utils.aoa_to_sheet([hdrs, ...rowsV]);
+  const rowsP = [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).map(p => {
+    const ab = (ABP[p.id]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+    const saldo = Math.max(0, p.total - ab);
+    return saldo > 0 ? [p.cliente, fmtN(saldo)] : null;
+  }).filter(Boolean);
+  const totP = rowsP.reduce((a,r)=>a+parseFloat(r[1]),0);
+  rowsP.push(['TOTAL', fmtN(totP)]);
+  const wsP = XLSX.utils.aoa_to_sheet([hdrs, ...rowsP]);
+  const rowsI = Object.entries(B)
+    .filter(([,b])=>b.tipo==='individual')
+    .sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente))
+    .map(([k,b])=>{
+      const total = prec() - (b.descuento||0);
+      const ab = (ABI[k]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+      const saldo = Math.max(0, total - ab);
+      return saldo > 0 ? [b.cliente, fmtN(saldo)] : null;
+    }).filter(Boolean);
+  const totI = rowsI.reduce((a,r)=>a+parseFloat(r[1]),0);
+  rowsI.push(['TOTAL', fmtN(totI)]);
+  const wsI = XLSX.utils.aoa_to_sheet([hdrs, ...rowsI]);
+  const wsR = XLSX.utils.aoa_to_sheet([
+    ['Concepto', 'Saldo pendiente (EUR)'],
+    ['Vendedores', fmtN(totV)],
+    ['Paquetes RC&R', fmtN(totP)],
+    ['Individuales', fmtN(totI)],
+    ['TOTAL GLOBAL', fmtN(totV + totP + totI)]
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
+  XLSX.utils.book_append_sheet(wb, wsV, 'Vendedores');
+  XLSX.utils.book_append_sheet(wb, wsP, 'Paquetes');
+  XLSX.utils.book_append_sheet(wb, wsI, 'Individuales');
+  const fecha = new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/[/]/g,'-');
+  XLSX.writeFile(wb, 'Dinero_por_recoger_'+fecha+'.xlsx');
+  showToast('Excel exportado correctamente');
+}
 // ═══════════════════════════════ INIT
 perfilActivo='publico';isAdmin=false;socioActivoId=null;
 refreshSelects();
