@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1113,7 +1113,7 @@ function parsearNums(raw){
     const n=parseInt(t,10);
     if(isNaN(n)||n<0||n>999)return{raw:t,k:null,estado:'inv'};
     const k=pad(n);
-    if(ABON[k])return{raw:t,k,estado:'ab'};
+    if(ABON[k]&&!ABON[k].liberado)return{raw:t,k,estado:'ab'};
     if(B[k])return{raw:t,k,estado:'dup'};
     return{raw:t,k,estado:'ok'};
   });
@@ -1469,7 +1469,7 @@ function renderMapa(){
   const filtro=document.getElementById('mapa-filtro').value;
   const grid=document.getElementById('mapa');grid.innerHTML='';
   for(let i=0;i<1000;i++){
-    const k=pad(i);const b=B[k];const isAbon=!!ABON[k];const isSel=sel.has(k);
+    const k=pad(i);const b=B[k];const isAbon=!!(ABON[k]&&!ABON[k].liberado);const isSel=sel.has(k);
     let cls='nc';
     if(isSel)cls+=mapaMode==='desasignar'?' sel-del':mapaMode==='abonado'?' sel-gold':' sel';
     else if(isAbon){cls+=' abonado';if(filtro&&filtro!=='__ab__')cls+=' dim';}
@@ -1519,7 +1519,7 @@ function confirmarAsigMapa(){
     const vid=vsGetSelected('mapa');if(!vid){alert('Elige un vendedor');return;}
     const v=V.find(v=>v.id===vid);
     showModal('Confirmar asignación',`Asignar ${sel.size} número(s) a ${v.nombre}`,()=>{
-      sel.forEach(k=>{if(!B[k]&&!ABON[k])B[k]={tipo:'vendedor',vid,pagado:false};});
+      sel.forEach(k=>{if(!B[k]&&(!ABON[k]||ABON[k].liberado))B[k]={tipo:'vendedor',vid,pagado:false};});
       saveAndSync();sel.clear();renderMapa();renderVendedores();
     });
   } else if(tipo==='individual'){
