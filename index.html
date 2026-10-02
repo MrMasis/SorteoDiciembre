@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sistema de Sorteo</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --bg:#f5f3ee; --surface:#fff; --surface2:#edeae3; --border:#d8d3c8; --border2:#c8c2b5;
@@ -217,10 +218,7 @@ tbody tr:hover td{background:var(--bg)}
       <div class="header-precio" id="header-precio">Precio: —</div>
       <div id="sync-status" style="font-size:10px;font-family:var(--mono);color:var(--text3)">Iniciando...</div>
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">
-      <button class="admin-btn" id="perfil-btn" onclick="seleccionarPerfil()">🔒 Ingresar</button>
-      <button class="admin-btn" id="salir-btn" onclick="cerrarSesion()" style="display:none">↩ Salir</button>
-    </div>
+    <button class="admin-btn" id="admin-toggle-btn" onclick="toggleAdmin()">🔒 Administrador</button>
   </div>
 </div>
 
@@ -231,14 +229,13 @@ tbody tr:hover td{background:var(--bg)}
   <button class="tab admin-only" onclick="goTab('directas',this)">Vendidas RC&amp;R</button>
   <button class="tab" onclick="goTab('dinero',this)">Dinero por recoger</button>
   <button class="tab" onclick="goTab('abonos-rapido',this)">Registrar abono</button>
-
   <button class="tab admin-only" onclick="goTab('abonos',this)">Abonos</button>
   <button class="tab admin-only" onclick="goTab('historial',this)">Historial</button>
   <button class="tab admin-only" onclick="goTab('abonados',this)">Números abonados</button>
   <button class="tab admin-only" onclick="goTab('admon',this)">ADMON</button>
 </div>
 
-<div class="readonly-badge" id="readonly-badge" style="display:none">👁 Solo lectura</div>
+<div class="readonly-badge" id="readonly-badge">👁 Solo lectura</div>
 
 <div class="main">
 
@@ -272,9 +269,6 @@ tbody tr:hover td{background:var(--bg)}
         <div class="mode-bar">
           <button class="mode-btn active" id="mode-asig" onclick="setMode('asignar')">Asignar</button>
           <button class="mode-btn m-del" id="mode-del" onclick="setMode('desasignar')">Desasignar</button>
-
-
-
         </div>
       </div>
       <div id="toolbar-asig" style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
@@ -322,43 +316,25 @@ tbody tr:hover td{background:var(--bg)}
         </div>
       </div>
       <div id="toolbar-del" style="display:none;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
-        <p style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:6px">Modo desasignar — clic en números asignados. Los abonados no se pueden desasignar aquí.</p>
-        <div class="fr">
-          <button class="btn btn-warn" onclick="desasignarSel()">Desasignar (<span id="del-count">0</span>)</button>
-          <div style="margin-top:1rem">
-            <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:6px">Desasignar en bloque por texto</div>
-            <div class="fr" style="align-items:flex-start;gap:8px">
-              <div style="flex:1;min-width:200px">
-                <textarea id="texto-desal-nums" class="num-input-area" rows="3" placeholder="Números separados por comas, espacios o saltos&#10;Ej: 057, 159, 267" oninput="previewTextoDesal()" style="width:100%"></textarea>
-                <div class="num-preview" id="texto-desal-preview"></div>
-              </div>
-              <button class="btn btn-warn" onclick="confirmarTextoDesal()">Desasignar en bloque</button>
+        <p style="font-size:12px;color:var(--red);font-weight:600;margin-bottom:6px">Modo desasignar — clic en números asignados para seleccionarlos, o usa el bloque de texto.</p>
+        <div class="fr" style="margin-bottom:12px">
+          <button class="btn btn-warn" onclick="desasignarSel()">Desasignar selección (<span id="del-count">0</span>)</button>
+          <button class="btn" onclick="clearSel()">Cancelar</button>
+        </div>
+        <div style="padding-top:10px;border-top:1px solid var(--border)">
+          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Desasignación en bloque por texto</div>
+          <div class="fr" style="align-items:flex-start">
+            <div style="flex:1;min-width:200px">
+              <textarea id="texto-desal-nums" class="num-input-area" rows="3" placeholder="Números separados por comas, espacios o saltos&#10;Ej: 057, 159, 267, 845, 952" oninput="previewTextoDesal()" style="width:100%"></textarea>
+              <div class="num-preview" id="texto-desal-preview"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;min-width:160px">
+              <button class="btn btn-warn" onclick="confirmarTextoDesal()" style="width:100%">Desasignar en bloque</button>
             </div>
           </div>
-          <button class="btn" onclick="clearSel()">Cancelar</button>
         </div>
       </div>
-      <div id="toolbar-reasig" style="display:none;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
-        <p style="font-size:12px;color:var(--blue);font-weight:600;margin-bottom:6px">Modo reasignar — selecciona números de un vendedor para moverlos a otro.</p>
-        <div class="fr">
-          <div class="vs-wrap" id="vs-reasig-wrap" style="min-width:180px">
-            <input class="vs-input" id="vs-reasig-input" placeholder="Reasignar a vendedor..." autocomplete="off" oninput="vsFilter(&apos;reasig&apos;)" onfocus="vsOpen(&apos;reasig&apos;)" onblur="setTimeout(()=>vsClose(&apos;reasig&apos;),150)">
-            <div class="vs-dropdown" id="vs-reasig-drop"></div>
-          </div>
-          <button class="btn btn-p" onclick="reasignarSel()">Reasignar (<span id="reasig-count">0</span>)</button>
-          <button class="btn" onclick="clearSel()">Cancelar</button>
-        </div>
-      </div>
-      <div id="toolbar-pago" style="display:none;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
-        <p style="font-size:12px;color:var(--text2)">Modo pago — clic en cualquier número asignado para cambiar su estado.</p>
-      </div>
-      <div id="toolbar-gold" style="display:none;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border)">
-        <p style="font-size:12px;color:var(--gold);font-weight:600;margin-bottom:6px">Modo abonado — selecciona números libres para marcarlos como abonados permanentes.</p>
-        <div class="fr">
-          <button class="btn btn-gold" onclick="confirmarAbonados()">Marcar abonados (<span id="gold-count">0</span>)</button>
-          <button class="btn" onclick="clearSel()">Cancelar</button>
-        </div>
-      </div>
+
       <div class="legend">
         <div class="leg"><div class="leg-dot" style="background:var(--gold-bg);border:1px solid #c8a830"></div>Abonado</div>
         <div class="leg"><div class="leg-dot" style="background:var(--accent-bg);border:1px solid #aacab6"></div>Pagado</div>
@@ -455,10 +431,12 @@ tbody tr:hover td{background:var(--bg)}
 
 <!-- ══════════════════════ DINERO POR RECOGER -->
 <div id="tab-dinero" class="section">
-  <div class="subtab-row">
-    <button class="subtab active" onclick="goDineroTab('vendedores',this)">Vendedores</button>
-    <button class="subtab" onclick="goDineroTab('paquetes',this)">Paquetes</button>
-    <button class="subtab" onclick="goDineroTab('individuales',this)">Individuales</button>
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+    <div class="subtab-row" style="margin-bottom:0">
+      <button class="subtab active" onclick="goDineroTab('vendedores',this)">Vendedores</button>
+      <button class="subtab" onclick="goDineroTab('paquetes',this)">Paquetes</button>
+      <button class="subtab" onclick="goDineroTab('individuales',this)">Individuales</button>
+    </div>
     <button class="btn btn-g btn-sm" onclick="exportarExcelDinero()" style="white-space:nowrap">📊 Exportar Excel</button>
   </div>
   <div class="search-bar">
@@ -574,25 +552,13 @@ tbody tr:hover td{background:var(--bg)}
         <div style="font-size:12px;color:var(--text3);margin-top:6px;font-family:var(--mono)" id="s-precio-actual"></div>
       </div>
       <div class="card">
-        <div class="ctitle">Contraseñas de acceso</div>
-        <div style="margin-bottom:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Administrador</div>
-          <div class="fr">
-            <input id="s-pass-actual" type="password" placeholder="Contraseña actual" style="flex:1">
-            <input id="s-pass-nueva" type="password" placeholder="Nueva contraseña" style="flex:1">
-            <button class="btn" onclick="cambiarPassword()">Cambiar</button>
-          </div>
+        <div class="ctitle">Contraseña de administrador</div>
+        <div class="fr">
+          <input id="s-pass-actual" type="password" placeholder="Contraseña actual" style="flex:1">
+          <input id="s-pass-nueva" type="password" placeholder="Nueva contraseña" style="flex:1">
+          <button class="btn" onclick="cambiarPassword()">Cambiar</button>
         </div>
-        <div style="margin-bottom:10px">
-          <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">Rigo</div>
-          <div class="fr">
-            <input id="s-pass-padre-nueva" type="password" placeholder="Nueva contraseña Rigo" style="flex:1">
-            <button class="btn" onclick="cambiarPassPerfil('passPadre','s-pass-padre-nueva')">Cambiar</button>
-          </div>
-          <div id="pass-padre-actual" style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)"></div>
-        </div>
-        <div id="pass-socios-admin"></div>
-        <p style="font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono)">Contraseña admin por defecto: <strong>1234</strong></p>
+        <p style="font-size:11px;color:var(--text3);margin-top:6px;font-family:var(--mono)">Contraseña por defecto: <strong>1234</strong></p>
       </div>
       <div class="card">
         <div class="ctitle">Número ganador</div>
@@ -640,7 +606,6 @@ tbody tr:hover td{background:var(--bg)}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 // ═══════════════════════════════ ESTADO
 let V    = JSON.parse(localStorage.getItem('st8_v')    || '[]');
@@ -651,19 +616,13 @@ let ABI  = JSON.parse(localStorage.getItem('st8_abi')  || '{}');
 let ABP  = JSON.parse(localStorage.getItem('st8_abp')  || '{}');
 let ABON = JSON.parse(localStorage.getItem('st8_abon') || '{}');
 let ABPAQ= JSON.parse(localStorage.getItem('st8_abpaq')|| '[]');
-// SOCIO_DATA: datos internos de cada socio {socioId: {ventas:{num:{cliente,descuento,pagado}}, abonos:{num:[{id,monto,nota,fecha}]}}}
-let SOCIO_DATA = JSON.parse(localStorage.getItem('st8_socio_data') || '{}');
-
-let CFG  = JSON.parse(localStorage.getItem('st8_cfg')  || '{"nombre":"Sorteo","precio":50,"ganador":null,"pass":"1234","passPadre":"padre","passGustavo":"gustavo","passBreyner":"breyner"}');
+let CFG  = JSON.parse(localStorage.getItem('st8_cfg')  || '{"nombre":"Sorteo","precio":50,"ganador":null,"pass":"1234"}');
 
 let sel = new Set();
 let mapaMode = 'asignar';
 let dineroTab = 'vendedores';
 let abonoTab = 'vendedores';
 let isAdmin = false;
-// perfil: 'publico' | 'padre' | 'socio' | 'admin'
-let perfilActivo = 'publico';
-let socioActivoId = null; // ID del socio logueado
 
 // Vendor search state
 let vsSelected = {mapa: null, texto: null};
@@ -686,7 +645,6 @@ const save = () => {
   localStorage.setItem('st8_abon', JSON.stringify(ABON));
   localStorage.setItem('st8_abpaq',JSON.stringify(ABPAQ));
   localStorage.setItem('st8_cfg',  JSON.stringify(CFG));
-  localStorage.setItem('st8_socio_data', JSON.stringify(SOCIO_DATA));
 };
 const pad   = n => String(n).padStart(3,'0');
 const fmt   = n => '€' + Number(n).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -694,118 +652,46 @@ const today = () => new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'
 const prec  = () => CFG.precio || 50;
 const sortV = arr => [...arr].sort((a,b)=>a.nombre.localeCompare(b.nombre));
 
-// ═══════════════════════════════ PERFILES DE ACCESO
-function seleccionarPerfil(){
-  showModal('Acceso al sistema','Ingresa tu contraseña.',()=>{
-    const pass=document.getElementById('modal-perfil-pass').value.trim();
-    let ok=false;
-    if(pass===(CFG.pass||'1234')){
-      perfilActivo='admin';isAdmin=true;socioActivoId=null;ok=true;
-    } else if(pass===(CFG.passPadre||'padre')){
-      perfilActivo='padre';isAdmin=false;socioActivoId=null;ok=true;
-    } else {
-      const socios=V.filter(v=>v.esSocio);
-      for(const s of socios){
-        const passEsp=CFG['passSocio_'+s.id]||(s.nombre.split(' ')[0].toLowerCase());
-        if(pass===passEsp){perfilActivo='socio';isAdmin=false;socioActivoId=s.id;ok=true;break;}
-      }
-    }
-    if(ok)applyProfile();
-    else alert('Contraseña incorrecta. Inténtalo de nuevo.');
-  },'<div class="modal-field"><label>Contraseña</label><input id="modal-perfil-pass" type="password" style="width:100%" autofocus></div>','Entrar');
-}
-function cerrarSesion(){
-  perfilActivo='publico';isAdmin=false;socioActivoId=null;
-  applyProfile();
-  // Volver a dashboard
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-  document.querySelector('.tab').classList.add('active');
-  document.getElementById('tab-dashboard').classList.add('active');
-  renderDash();
+// ═══════════════════════════════ ADMIN / PERFILES
+function toggleAdmin(){
+  if(isAdmin){
+    isAdmin=false;applyProfile();
+  } else {
+    showModal('Acceso de administrador','',()=>{
+      const pass=document.getElementById('modal-pass-input').value;
+      if(pass===(CFG.pass||'1234')){isAdmin=true;applyProfile();}
+      else alert('Contraseña incorrecta');
+    },'<div class="modal-field"><label>Contraseña</label><input id="modal-pass-input" type="password" placeholder="Contraseña" style="width:100%" autofocus></div>','Entrar');
+  }
 }
 function applyProfile(){
-  const perfilBtn=document.getElementById('perfil-btn');
-  const salirBtn=document.getElementById('salir-btn');
+  const btn=document.getElementById('admin-toggle-btn');
   const badge=document.getElementById('readonly-badge');
+  const adminTabs=document.querySelectorAll('.tab.admin-only');
   const adminSection=document.getElementById('mapa-admin-section');
-
-  // Ocultar todo primero
-  document.querySelectorAll('.tab').forEach(t=>t.style.display='none');
-  document.querySelectorAll('.admin-control').forEach(el=>el.style.display='none');
-  if(adminSection)adminSection.style.display='none';
-
-  if(perfilActivo==='publico'){
-    perfilBtn.textContent='🔒 Ingresar';perfilBtn.classList.remove('active');
-    if(salirBtn)salirBtn.style.display='none';
+  const adminControls=document.querySelectorAll('.admin-control');
+  if(isAdmin){
+    btn.textContent='🔓 Salir de admin';btn.classList.add('active');
     badge.classList.remove('visible');
-    // Solo dashboard y lista numérica
-    document.querySelectorAll('.tab').forEach(t=>{
-      const fn=t.getAttribute('onclick')||'';
-      if(fn.includes("'dashboard'")||fn.includes("'mapa'"))t.style.display='';
-    });
-
-  } else if(perfilActivo==='admin'){
-    perfilBtn.textContent='🔓 Admin';perfilBtn.classList.add('active');
-    if(salirBtn)salirBtn.style.display='';
-    badge.classList.remove('visible');
-    // TODAS las pestañas visibles — remover clase admin-only y forzar display
-    document.querySelectorAll('.tab').forEach(t=>{
-      t.classList.remove('admin-only');
-      t.style.removeProperty('display');
-      t.style.display='block';
-    });
-    if(adminSection)adminSection.style.display='block';
-    document.querySelectorAll('.admin-control').forEach(el=>{el.style.removeProperty('display');});
-
-  } else if(perfilActivo==='padre'){
-    perfilBtn.textContent='Rigo';perfilBtn.classList.add('active');
-    if(salirBtn)salirBtn.style.display='';
-    badge.classList.remove('visible');
-    // Ve todo excepto ADMON, Vendidas RC&R, Abonos, Historial, Números abonados
-    document.querySelectorAll('.tab').forEach(t=>{
-      const fn=t.getAttribute('onclick')||'';
-      const ocultos=["'directas'","'abonos'","'historial'","'abonados'","'admon'"];
-      if(!ocultos.some(o=>fn.includes(o)))t.style.display='';
-    });
-
-  } else if(perfilActivo==='socio'){
-    const socio=V.find(v=>v.id===socioActivoId);
-    perfilBtn.textContent=`★ ${socio?socio.nombre.split(' ')[0]:'Socio'}`;perfilBtn.classList.add('active');
-    if(salirBtn)salirBtn.style.display='';
-    badge.classList.remove('visible');
-    // Solo: dashboard, mapa, vendedores, dinero, registrar abono, mis ventas
-    document.querySelectorAll('.tab').forEach(t=>{
-      const fn=t.getAttribute('onclick')||'';
-      const visibles=["'dashboard'","'mapa'","'vendedores'"];
-      if(visibles.some(v=>fn.includes(v)))t.style.display='';
-    });
-  }
-
-  // Si la pestaña activa quedó oculta, ir a dashboard
-  const activeTab=document.querySelector('.tab.active');
-  if(activeTab&&activeTab.style.display==='none'){
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
-    document.getElementById('tab-dashboard').classList.add('active');
-    document.querySelector('.tab[style*="display: block"], .tab:not([style*="display: none"])')?.classList.add('active');
-    renderDash();
+    adminTabs.forEach(t=>t.classList.add('visible'));
+    adminSection.style.display='block';
+    adminControls.forEach(el=>el.style.display='');
   } else {
-    renderDash();
+    btn.textContent='🔒 Administrador';btn.classList.remove('active');
+    badge.classList.add('visible');
+    adminTabs.forEach(t=>t.classList.remove('visible'));
+    adminSection.style.display='none';
+    adminControls.forEach(el=>el.style.display='none');
+    // Si estaba en una pestaña admin, ir a dashboard
+    const activeAdminTab=document.querySelector('.tab.admin-only.active');
+    if(activeAdminTab){
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+      document.querySelector('.tab').classList.add('active');
+      document.getElementById('tab-dashboard').classList.add('active');
+      renderDash();
+    }
   }
-}
-function cambiarPassSocio(sid){
-  const nueva=document.getElementById('pass-socio-'+sid).value;
-  if(!nueva||nueva.length<3){alert('Mínimo 3 caracteres');return;}
-  CFG['passSocio_'+sid]=nueva;saveAndSync();
-  document.getElementById('pass-socio-'+sid).value='';
-  alert('Contraseña actualizada');renderAdmon();
-}
-function cambiarPassPerfil(campo,inputId){
-  const nueva=document.getElementById(inputId).value;
-  if(!nueva||nueva.length<3){alert('Mínimo 3 caracteres');return;}
-  CFG[campo]=nueva;saveAndSync();document.getElementById(inputId).value='';
-  alert('Contraseña actualizada');renderAdmon();
 }
 function cambiarPassword(){
   const actual=document.getElementById('s-pass-actual').value;
@@ -848,13 +734,7 @@ function vsRefresh(){
 
 // ═══════════════════════════════ TABS
 function goTab(id,el){
-  const tabsAdmin=['directas','abonos','historial','abonados','admon'];
-  const tabsSocio=['dashboard','mapa','vendedores'];
-  const tabsPadre=['dashboard','mapa','vendedores','dinero','abonos-rapido','historial'];
-  if(perfilActivo==='publico'&&!['dashboard','mapa'].includes(id))return;
-  if(perfilActivo==='socio'&&!tabsSocio.includes(id))return;
-  if(perfilActivo==='padre'&&!tabsPadre.includes(id)&&tabsAdmin.includes(id))return;
-  if(perfilActivo!=='admin'&&tabsAdmin.includes(id)&&perfilActivo!=='padre')return;
+  if(!isAdmin&&['directas','abonos','abonados','admon'].includes(id))return;
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   el.classList.add('active');
@@ -904,8 +784,7 @@ function addV(){
   const n=document.getElementById('v-nom').value.trim();
   if(!n){alert('Ingresa el nombre');return;}
   const esSocio=document.getElementById('v-es-socio').checked;
-  const socioIdRaw=document.getElementById('v-socio-id').value||null;
-  const socioId=socioIdRaw?parseInt(socioIdRaw):null;
+  const socioId=document.getElementById('v-socio-id').value||null;
   V.push({id:Date.now(),nombre:n,telefono:document.getElementById('v-tel').value.trim(),
     comision:parseFloat(document.getElementById('v-com').value)||20,
     esSocio,socioId:esSocio?null:socioId});
@@ -999,8 +878,7 @@ function renderVendedores(){
   const buscar=(document.getElementById('v-buscar')||{}).value?.toLowerCase()||'';
   const cont=document.getElementById('vendedores-lista');
   if(!V.length){cont.innerHTML='<div class="card"><div class="empty">Sin vendedores registrados</div></div>';return;}
-  let listaV=sortV(V);
-  if(buscar)listaV=listaV.filter(v=>v.nombre.toLowerCase().includes(buscar));
+  let listaV=sortV(V);if(buscar)listaV=listaV.filter(v=>v.nombre.toLowerCase().includes(buscar));
   if(!listaV.length){cont.innerHTML='<div class="card"><div class="empty">Sin coincidencias</div></div>';return;}
 
   // Actualizar selector de socios en formulario
@@ -1011,32 +889,15 @@ function renderVendedores(){
   }
 
   // Separar socios, vendedores con socio y vendedores sin socio
-  // Si es socio, solo mostrar su propio grupo
-  let todosSocios=sortV(V.filter(v=>v.esSocio));
-  if(perfilActivo==='socio'&&socioActivoId){
-    todosSocios=todosSocios.filter(v=>v.id===socioActivoId);
-  }
-  const socios=todosSocios;
-  // Fix: comparar socioId como string y número para evitar falsos positivos
-  const sinSocio=perfilActivo==='socio'?[]:listaV.filter(v=>!v.esSocio&&!v.socioId&&v.socioId!==0);
+  const socios=listaV.filter(v=>v.esSocio);
+  const sinSocio=listaV.filter(v=>!v.esSocio&&!v.socioId);
   let html='';
 
   // Socios con sus vendedores agrupados
   socios.forEach(socio=>{
-    // Filtrar vendedores del socio respetando el buscador
-    const vendedoresSocio=sortV(V.filter(v=>v.socioId===socio.id&&(!buscar||v.nombre.toLowerCase().includes(buscar))));
-    const vendedoresSocioAll=sortV(V.filter(v=>v.socioId===socio.id));
-    const netoSocioDirecto=netoV(socio).neto;
-    const netoVendedores=vendedoresSocioAll.reduce((a,v)=>a+netoV(v).neto,0);
-    const totalNeto=netoSocioDirecto+netoVendedores;
-    const totalBoletas=netoV(socio).count+vendedoresSocioAll.reduce((a,v)=>a+netoV(v).count,0);
-    // Neto a entregar = neto vendedores (el socio ya cobró su 20% extra sobre ellos)
-    // Por cada vendedor: precio_boleta × count_boletas × (1 - comision_vendedor/100)
-    // El socio ya se queda con la diferencia entre su 40% y el 20% del vendedor
-    const netoAEntregar=netoSocioDirecto+vendedoresSocioAll.reduce((a,v)=>{
-      const cnt=Object.keys(B).filter(k=>B[k].tipo==='vendedor'&&B[k].vid===v.id).length;
-      return a+cnt*prec()*(1-socio.comision/100); // lo que el sistema recibe por esos vendedores
-    },0);
+    const vendedoresSocio=sortV(V.filter(v=>v.socioId===socio.id));
+    const totalNeto=netoV(socio).neto+vendedoresSocio.reduce((a,v)=>a+netoV(v).neto,0);
+    const totalBoletas=netoV(socio).count+vendedoresSocio.reduce((a,v)=>a+netoV(v).count,0);
     html+=`<div style="margin-bottom:1.25rem">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;background:var(--text);color:var(--bg);border-radius:var(--rl) var(--rl) 0 0;flex-wrap:wrap;gap:8px">
         <div style="display:flex;align-items:center;gap:10px">
@@ -1045,18 +906,17 @@ function renderVendedores(){
           <span style="font-size:11px;opacity:.5;font-family:var(--mono)">${socio.comision}% com.</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <span style="font-family:var(--mono);font-size:12px;opacity:.7">${totalBoletas} boletas</span>
-          <span style="font-family:var(--mono);font-size:12px;opacity:.7">Neto grupo: ${fmt(totalNeto)}</span>
-          <span style="font-family:var(--mono);font-size:12px;color:#aacab6;font-weight:600">→ A entregar: ${fmt(netoAEntregar)}</span>
+          <span style="font-family:var(--mono);font-size:12px;opacity:.7">${totalBoletas} boletas · Neto grupo: ${fmt(totalNeto)}</span>
           ${isAdmin?`<button class="btn btn-sm" style="background:transparent;color:var(--bg);border-color:rgba(255,255,255,.3)" onclick="editarVendedor(${socio.id})">Editar</button>
           <button class="btn btn-sm" style="background:transparent;color:var(--bg);border-color:rgba(255,255,255,.3)" onclick="gestionarNumsVendedor(${socio.id})">+ Números</button>
+          <button class="btn btn-sm" style="background:var(--red);color:#fff;border-color:var(--red)" onclick="limpiarNumerosVendedor(${socio.id})">Limpiar números</button>
           <button class="btn btn-sm btn-d" style="color:#f5dddd;border-color:rgba(255,100,100,.4)" onclick="removeV(${socio.id})">Eliminar</button>`:''}
         </div>
       </div>
       <div style="border:1px solid var(--border);border-top:none;border-radius:0 0 var(--rl) var(--rl);overflow:hidden;background:var(--bg);padding:.75rem">
         ${vendedorCardHtml(socio)}
         ${vendedoresSocio.length?vendedoresSocio.map(v=>vendedorCardHtml(v)).join('')
-        :'<div style="font-size:12px;color:var(--text3);padding:.5rem .5rem">Sin vendedores vinculados aún</div>'}
+        :'<div style="font-size:12px;color:var(--text3);padding:.5rem .5rem">Sin vendedores vinculados</div>'}
       </div>
     </div>`;
   });
@@ -1080,11 +940,12 @@ function buscarNumero(){
   const k=pad(n);
   const isAbon=!!ABON[k];const b=B[k];
   res.classList.add('visible');
-  if(isAbon&&!B[k]){
-    // Abonado pero no confirmado en RC&R — mostrar como libre/abonado sin detalles
+  if(isAbon){
+    const conf=ABON[k].confirmado&&B[k];
     res.innerHTML=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-family:var(--mono);font-weight:700;font-size:18px;color:var(--gold)">${k}</span>
       <span class="badge bgold">★ Abonado</span>
+      ${conf?'<span class="badge bg">Confirmado en RC&R</span>':'<span class="badge ba">Por confirmar</span>'}
       <span style="font-weight:600">${ABON[k].titular}</span>
     </div>`;
   } else if(b){
@@ -1113,7 +974,7 @@ function parsearNums(raw){
     const n=parseInt(t,10);
     if(isNaN(n)||n<0||n>999)return{raw:t,k:null,estado:'inv'};
     const k=pad(n);
-    if(ABON[k]&&!ABON[k].liberado)return{raw:t,k,estado:'ab'};
+    if(ABON[k])return{raw:t,k,estado:'ab'};
     if(B[k])return{raw:t,k,estado:'dup'};
     return{raw:t,k,estado:'ok'};
   });
@@ -1442,13 +1303,10 @@ function renderAbonados(){
 // ═══════════════════════════════ MAPA
 function setMode(m){
   mapaMode=m;sel.clear();
-  ['asig','del','reasig','pago','gold'].forEach(id=>{const el2=document.getElementById('mode-'+id);if(el2)el2.classList.remove('active');});
-  const modeEl=document.getElementById({asignar:'mode-asig',desasignar:'mode-del',reasignar:'mode-reasig',pago:'mode-pago',abonado:'mode-gold'}[m]);if(modeEl)modeEl.classList.add('active');
+  ['asig','del'].forEach(id=>{const el2=document.getElementById('mode-'+id);if(el2)el2.classList.remove('active');});
+  const modeEl=document.getElementById({asignar:'mode-asig',desasignar:'mode-del'}[m]);if(modeEl)modeEl.classList.add('active');
   document.getElementById('toolbar-asig').style.display=m==='asignar'?'block':'none';
   document.getElementById('toolbar-del').style.display=m==='desasignar'?'block':'none';
-  const trEl=document.getElementById('toolbar-reasig');if(trEl)trEl.style.display=m==='reasignar'?'block':'none';
-  document.getElementById('toolbar-pago').style.display=m==='pago'?'block':'none';
-  document.getElementById('toolbar-gold').style.display=m==='abonado'?'block':'none';
   renderMapa();
 }
 function toggleMapaAsigTipo(){
@@ -1469,7 +1327,7 @@ function renderMapa(){
   const filtro=document.getElementById('mapa-filtro').value;
   const grid=document.getElementById('mapa');grid.innerHTML='';
   for(let i=0;i<1000;i++){
-    const k=pad(i);const b=B[k];const isAbon=!!(ABON[k]&&!ABON[k].liberado);const isSel=sel.has(k);
+    const k=pad(i);const b=B[k];const isAbon=!!ABON[k];const isSel=sel.has(k);
     let cls='nc';
     if(isSel)cls+=mapaMode==='desasignar'?' sel-del':mapaMode==='abonado'?' sel-gold':' sel';
     else if(isAbon){cls+=' abonado';if(filtro&&filtro!=='__ab__')cls+=' dim';}
@@ -1519,7 +1377,7 @@ function confirmarAsigMapa(){
     const vid=vsGetSelected('mapa');if(!vid){alert('Elige un vendedor');return;}
     const v=V.find(v=>v.id===vid);
     showModal('Confirmar asignación',`Asignar ${sel.size} número(s) a ${v.nombre}`,()=>{
-      sel.forEach(k=>{if(!B[k]&&(!ABON[k]||ABON[k].liberado))B[k]={tipo:'vendedor',vid,pagado:false};});
+      sel.forEach(k=>{if(!B[k]&&!ABON[k])B[k]={tipo:'vendedor',vid,pagado:false};});
       saveAndSync();sel.clear();renderMapa();renderVendedores();
     });
   } else if(tipo==='individual'){
@@ -1845,10 +1703,6 @@ function renderDinero(){
   if(dineroTab==='vendedores'){
     if(!V.length){cont.innerHTML='<div class="empty">Sin vendedores</div>';return;}
     let lista=sortV(V);
-    // Socio solo ve sus vendedores
-    if(perfilActivo==='socio'&&socioActivoId){
-      lista=lista.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
-    }
     if(buscar)lista=lista.filter(v=>v.nombre.toLowerCase().includes(buscar));
     lista=lista.filter(v=>{const{neto}=netoV(v);const ab=(ABV[v.id]||[]).reduce((a,x)=>a+x.monto,0);const saldo=neto-ab;if(filtroE==='pendiente')return saldo>0;if(filtroE==='aldia')return saldo<=0;return true;});
     const totNeto=lista.reduce((a,v)=>a+netoV(v).neto,0);
@@ -1942,105 +1796,66 @@ function renderDash(){
   const recPaq=PAQ.filter(p=>p.pagado).reduce((a,p)=>a+p.total,0);
   const recInd=Object.entries(B).filter(([,b])=>b.tipo==='individual'&&b.pagado).reduce((a,[,b])=>a+(prec()-(b.descuento||0)),0);
 
-  // Métricas según perfil
-  if(perfilActivo==='publico'||perfilActivo==='socio'){
-    document.getElementById('metrics').innerHTML=`
-      <div class="met amber"><div class="ml">Boletas asignadas a vendedores</div><div class="mv">${numV+numInd+numPaqNums}</div><div class="ms">de 1000 números</div></div>
-      <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">disponibles</div></div>
-    `;
-  } else {
-    document.getElementById('metrics').innerHTML=`
-      <div class="met"><div class="ml">Asignados vendedores</div><div class="mv">${numV}</div><div class="ms">de 1000 números</div></div>
-      <div class="met teal"><div class="ml">Vendidas RC&amp;R</div><div class="mv">${numInd+numPaqNums}</div><div class="ms">Individuales: ${numInd} · Paquetes: ${numPaqNums}</div></div>
-      <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">${abonCountReal} abonados por confirmar</div></div>
-      <div class="met amber"><div class="ml">Saldo por recoger</div><div class="mv" style="font-size:16px">${fmt(saldoTotal)}</div><div class="ms">total pendiente</div></div>
-      <div class="met green"><div class="ml">Total recaudado</div><div class="mv" style="font-size:16px">${fmt(totalAb)}</div><div class="ms">abonos confirmados</div>${totalPendiente>0?`<div style="margin-top:5px;font-size:11px;font-family:var(--mono);color:var(--amber);font-weight:600">+ ${fmt(totalPendiente)} por confirmar</div>`:''}</div>
-    `;
-  }
+  document.getElementById('metrics').innerHTML=`
+    <div class="met"><div class="ml">Asignados vendedores</div><div class="mv">${numV}</div><div class="ms">de 1000 números</div></div>
+    <div class="met teal"><div class="ml">Vendidas RC&amp;R</div><div class="mv">${numInd+numPaqNums}</div><div class="ms">Individuales: ${numInd} · Paquetes: ${numPaqNums}</div></div>
+    <div class="met"><div class="ml">Boletas libres</div><div class="mv">${libre}</div><div class="ms">${abonCountReal} abonados por confirmar</div></div>
+    <div class="met amber"><div class="ml">Saldo por recoger</div><div class="mv" style="font-size:16px">${fmt(saldoTotal)}</div><div class="ms">total pendiente</div></div>
+    <div class="met green"><div class="ml">Total recaudado</div><div class="mv" style="font-size:16px">${fmt(totalAb)}</div><div class="ms">abonos confirmados</div>${totalPendiente>0?`<div style="margin-top:5px;font-size:11px;font-family:var(--mono);color:var(--amber);font-weight:600">+ ${fmt(totalPendiente)} por confirmar</div>`:''}</div>
+  `;
 
   const pctA=Math.round((total-libre)/total*100);
-
-  if(perfilActivo==='publico'||perfilActivo==='socio'){
-    // Tablero básico: solo barra de progreso
-    document.getElementById('dash-e').innerHTML=`
-      <div style="margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-          <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
-          <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
-        </div>
-        <div class="prog-wrap" style="height:8px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
+  // Barras de progreso por vendedor para estado general
+  const vendBars = sortV(V).map(v=>{
+    const{neto,count}=netoV(v);
+    const ab=(ABV[v.id]||[]).reduce((a,x)=>a+x.monto,0);
+    const saldo=Math.max(0,neto-ab);
+    const pct2=neto>0?Math.min(100,Math.round(ab/neto*100)):0;
+    return `<div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span style="font-weight:600">${v.nombre} <span style="font-weight:400;color:var(--text3)">(${count} bol.)</span></span>
+        <span style="font-family:var(--mono);font-size:11px;color:${saldo<=0?'var(--accent)':'var(--amber)'}">${saldo<=0?'Al día ✓':fmt(saldo)+' pend.'}</span>
       </div>
-    `;
-  } else {
-    // Tablero completo: admin y padre
-    const vendBars = sortV(V).map(v=>{
-      const{neto,count}=netoV(v);
-      const ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
-      const saldo=Math.max(0,neto-ab);
-      const pct2=neto>0?Math.min(100,Math.round(ab/neto*100)):0;
-      return `<div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-          <span style="font-weight:600">${v.nombre} <span style="font-weight:400;color:var(--text3)">(${count} bol.)</span></span>
-          <span style="font-family:var(--mono);font-size:11px;color:${saldo<=0?'var(--accent)':'var(--amber)'}">${saldo<=0?'Al día ✓':fmt(saldo)+' pend.'}</span>
-        </div>
-        <div class="prog-wrap"><div class="prog-fill" style="width:${pct2}%;background:var(--accent)"></div></div>
-      </div>`;
-    }).join('');
-    document.getElementById('dash-e').innerHTML=`
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:1.25rem">
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
-          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Vendedores</div>
-          <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${V.length}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${numV} boletas asignadas</div>
-        </div>
-        <div style="background:var(--teal-bg);border:1px solid #8acac8;border-radius:var(--r);padding:.7rem 1rem">
-          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--teal);margin-bottom:4px">RC&R</div>
-          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--teal)">${numInd+numPaqNums}</div>
-          <div style="font-size:11px;color:var(--teal);font-family:var(--mono)">Ind: ${numInd} · Paq: ${numPaqNums}</div>
-        </div>
-        <div style="background:var(--gold-bg);border:1px solid #c8a830;border-radius:var(--r);padding:.7rem 1rem">
-          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">Por confirmar</div>
-          <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--gold)">${abonPorConfirmar}</div>
-          <div style="font-size:11px;color:var(--gold);font-family:var(--mono)">abonados</div>
-        </div>
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
-          <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Libres</div>
-          <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${libre}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">de 1000</div>
-        </div>
+      <div class="prog-wrap"><div class="prog-fill" style="width:${pct2}%;background:var(--accent)"></div></div>
+    </div>`;
+  }).join('');
+  document.getElementById('dash-e').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:1.25rem">
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Vendedores</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${V.length}</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${numV} boletas asignadas</div>
       </div>
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-          <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
-          <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
-        </div>
-        <div class="prog-wrap" style="height:7px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
+      <div style="background:var(--teal-bg);border:1px solid #8acac8;border-radius:var(--r);padding:.7rem 1rem">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--teal);margin-bottom:4px">RC&R</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--teal)">${numInd+numPaqNums}</div>
+        <div style="font-size:11px;color:var(--teal);font-family:var(--mono)">Ind: ${numInd} · Paq: ${numPaqNums}</div>
       </div>
-      ${vendBars?`<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Saldo por vendedor</div>${vendBars}`:''}
-    `;
-  }
+      <div style="background:var(--gold-bg);border:1px solid #c8a830;border-radius:var(--r);padding:.7rem 1rem">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);margin-bottom:4px">Por confirmar</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--mono);color:var(--gold)">${abonPorConfirmar}</div>
+        <div style="font-size:11px;color:var(--gold);font-family:var(--mono)">abonados</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:.7rem 1rem">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:4px">Libres</div>
+        <div style="font-size:22px;font-weight:700;font-family:var(--mono)">${libre}</div>
+        <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">de 1000</div>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span style="color:var(--text2);font-weight:600">Boletería asignada</span>
+        <span style="font-weight:700;font-family:var(--mono)">${pctA}%</span>
+      </div>
+      <div class="prog-wrap" style="height:7px"><div class="prog-fill" style="width:${pctA}%;background:var(--amber)"></div></div>
+    </div>
+    ${vendBars?`<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Saldo por vendedor</div>${vendBars}`:''}
+  `;
 }
 
 // ═══════════════════════════════ ADMON
 function renderAdmon(){
   refreshSelects();
-  // Mostrar contraseña actual de Rigo
-  const padreActual=document.getElementById('pass-padre-actual');
-  if(padreActual)padreActual.innerHTML=`Actual: <strong>${CFG.passPadre||'padre'}</strong>`;
-  // Mostrar gestión de contraseñas de socios
-  const passSocios=document.getElementById('pass-socios-admin');
-  if(passSocios){
-    const socios=sortV(V.filter(v=>v.esSocio));
-    passSocios.innerHTML=socios.map(s=>`
-      <div style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">★ ${s.nombre}</div>
-        <div class="fr">
-          <input id="pass-socio-${s.id}" type="password" placeholder="Nueva contraseña" style="flex:1">
-          <button class="btn" onclick="cambiarPassSocio(${s.id})">Cambiar</button>
-        </div>
-        <p style="font-size:11px;color:var(--text3);margin-top:4px;font-family:var(--mono)">Actual: <strong>${CFG['passSocio_'+s.id]||s.nombre.split(' ')[0].toLowerCase()}</strong></p>
-      </div>`).join('');
-  }
   const sp=document.getElementById('s-precio-actual');if(sp)sp.textContent=`Precio actual: ${fmt(prec())} por boleta`;
   const snom=document.getElementById('s-nombre');if(snom)snom.value=CFG.nombre||'';
   const spre=document.getElementById('s-precio');if(spre)spre.value=CFG.precio||50;
@@ -2120,7 +1935,7 @@ function importarJSON(e){
     try{const d=JSON.parse(ev.target.result);
       showModal('Importar respaldo','¿Reemplazar todos los datos con los del archivo?',()=>{
         V=d.V||[];B=d.B||{};PAQ=d.PAQ||[];ABV=d.ABV||{};ABI=d.ABI||{};ABP=d.ABP||{};
-        ABON=d.ABON||{};ABPAQ=d.ABPAQ||[];CFG=d.CFG||{nombre:'Sorteo',precio:50,ganador:null,pass:'1234'};SOCIO_DATA=d.SOCIO_DATA||{};SOCIO_DATA=d.SOCIO_DATA||{};
+        ABON=d.ABON||{};ABPAQ=d.ABPAQ||[];CFG=d.CFG||{nombre:'Sorteo',precio:50,ganador:null,pass:'1234'};
         saveAndSync();refreshSelects();renderDash();applyProfile();
       });
     }catch{alert('Error al leer el archivo');}
@@ -2128,7 +1943,7 @@ function importarJSON(e){
 }
 
 // ═══════════════════════════════ SYNC CON GOOGLE SHEETS
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzf2-JZlFn6kBE3v62iIxWfOcnElqfEVo0AOaQv8NdGaqKLkIW7A_6aNLer2miKukfU/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw9RjqwWWVrKzK2ac4B6WiFimQSMOooHmVqE73-sHF5MHT4ZThqUu3CG3BcKuTtXFJfSA/exec';
 
 function showSyncStatus(msg, color){
   let el = document.getElementById('sync-status');
@@ -2140,7 +1955,7 @@ function showSyncStatus(msg, color){
 async function syncSave(){
   showSyncStatus('Guardando en la nube...','var(--amber)');
   try{
-    const payload={V,B,PAQ,ABV,ABI,ABP,ABON,ABPAQ,CFG,SOCIO_DATA};
+    const payload={V,B,PAQ,ABV,ABI,ABP,ABON,ABPAQ,CFG};
     const res=await fetch(GAS_URL,{
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
@@ -2288,17 +2103,67 @@ function agregarNumsABoleta(tipo,id){
   }
 }
 
-function reasignarSel(){
-  if(!sel.size){alert('Selecciona números primero');return;}
-  const vid=vsGetSelected('reasig');if(!vid){alert('Elige el vendedor destino');return;}
-  const v=V.find(v=>v.id===vid);
-  const noVend=[...sel].filter(k=>!B[k]||B[k].tipo!=='vendedor');
-  if(noVend.length){alert('Solo puedes reasignar números de vendedores');return;}
-  showModal('Reasignar números',`¿Mover ${sel.size} número(s) a ${v.nombre}?`,()=>{
-    sel.forEach(k=>{if(B[k]&&B[k].tipo==='vendedor')B[k]={tipo:'vendedor',vid,pagado:false};});
-    saveAndSync();sel.clear();
-    const rc=document.getElementById('reasig-count');if(rc)rc.textContent=0;
-    renderMapa();renderVendedores();
+function limpiarNumerosVendedor(vid){
+  const v=V.find(v=>v.id===vid);if(!v)return;
+  const nums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&b.vid===vid);
+  if(!nums.length){showToast('Este vendedor no tiene números asignados');return;}
+  showModal('Limpiar números',`¿Liberar los ${nums.length} número(s) de ${v.nombre}? El vendedor no se eliminará.`,()=>{
+    nums.forEach(([k])=>delete B[k]);
+    saveAndSync();renderVendedores();renderMapa();
+    showToast(`✓ ${nums.length} número(s) liberados de ${v.nombre}`);
+  });
+}
+
+function previewTextoDesal(){
+  const raw=document.getElementById('texto-desal-nums').value;
+  const prev=document.getElementById('texto-desal-preview');
+  if(!raw.trim()){prev.innerHTML='';return;}
+  const items=parsearNums(raw);
+  const asignados=items.filter(i=>B[i.k]);
+  const libres=items.filter(i=>i.estado==='ok'&&!B[i.k]);
+  const invalidos=items.filter(i=>i.estado!=='ok');
+  let html=`<span style="color:var(--red)">${asignados.length} a liberar</span>`;
+  if(libres.length)html+=` · <span style="color:var(--text3)">${libres.length} ya libres</span>`;
+  if(invalidos.length)html+=` · <span style="color:var(--text3)">${invalidos.length} inválidos</span>`;
+  prev.innerHTML=html;
+}
+
+function confirmarTextoDesal(){
+  const raw=document.getElementById('texto-desal-nums').value;
+  if(!raw.trim()){alert('Escribe los números a liberar');return;}
+  const items=parsearNums(raw);
+  const aLiberar=items.filter(i=>B[i.k]&&!ABON[i.k]);
+  if(!aLiberar.length){alert('No hay números asignados válidos para liberar (los abonados no se pueden liberar aquí)');return;}
+  showModal('Desasignar en bloque',`¿Liberar ${aLiberar.length} número(s)? Se quitarán de cualquier vendedor, paquete o individual al que estén asignados.`,()=>{
+    aLiberar.forEach(({k})=>{
+      const b=B[k];
+      if(!b) return;
+      if(b.tipo==='paquete'){
+        // Limpiar el número del paquete correspondiente
+        const pIdx=PAQ.findIndex(p=>p.id===b.paqId);
+        if(pIdx!==-1){
+          PAQ[pIdx].nums=PAQ[pIdx].nums.filter(n=>n!==k);
+          if(PAQ[pIdx].nums.length===0){
+            // Eliminar paquete vacío y sus abonos
+            const pid=PAQ[pIdx].id;
+            delete ABP[pid];
+            PAQ.splice(pIdx,1);
+          } else {
+            // Recalcular totales del paquete
+            PAQ[pIdx].precioBase=PAQ[pIdx].nums.length*prec();
+            PAQ[pIdx].total=Math.max(0,PAQ[pIdx].precioBase-(PAQ[pIdx].descuento||0));
+          }
+        }
+      } else if(b.tipo==='individual'){
+        // Limpiar abonos individuales asociados a este número
+        delete ABI[k];
+      }
+      delete B[k];
+    });
+    document.getElementById('texto-desal-nums').value='';
+    document.getElementById('texto-desal-preview').innerHTML='';
+    saveAndSync();renderMapa();renderVendedores();
+    showToast(`✓ ${aLiberar.length} número(s) liberados`);
   });
 }
 
@@ -2331,35 +2196,20 @@ function renderAbonosRapido(){
   const elBz=document.getElementById('total-hoy-bizum');if(elBz)elBz.textContent=fmt(totalBizum);
   // Construir lista: vendedores + individuales + paquetes
   let items=[];
-  let vendAbono=sortV(V);
-  if(perfilActivo==='socio'&&socioActivoId){
-    vendAbono=vendAbono.filter(v=>v.id===socioActivoId||v.socioId===socioActivoId);
-  }
-  vendAbono.forEach(v=>{
+  sortV(V).forEach(v=>{
     const{neto}=netoV(v);
-    let ab=0;
-    if(perfilActivo==='socio'&&socioActivoId){
-      // Usar abonos internos del SOCIO_DATA
-      const sid=socioActivoId;
-      const abonosInt=(SOCIO_DATA[sid]?.abonosVendedores?.[String(v.id)]||[]).reduce((s,a)=>s+a.monto,0);
-      ab=abonosInt;
-    } else {
-      ab=(ABV[v.id]||ABV[String(v.id)]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
-    }
+    const ab=(ABV[v.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
     items.push({tipo:'v',id:v.id,nombre:v.nombre,sub:v.telefono||'',saldo:Math.max(0,neto-ab)});
   });
-  // Individuales y paquetes: solo para admin y padre, no para socios
-  if(perfilActivo!=='socio'){
-    Object.entries(B).filter(([,b])=>b.tipo==='individual').sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente)).forEach(([k,b])=>{
-      const total=prec()-(b.descuento||0);
-      const ab=(ABI[k]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
-      items.push({tipo:'i',id:k,nombre:b.cliente,sub:`Boleta ${k}`,saldo:Math.max(0,total-ab)});
-    });
-    [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).forEach(p=>{
-      const ab=(ABP[p.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
-      items.push({tipo:'p',id:p.id,nombre:p.cliente,sub:`Paquete ×${p.nums.length}`,saldo:Math.max(0,p.total-ab)});
-    });
-  }
+  Object.entries(B).filter(([,b])=>b.tipo==='individual').sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente)).forEach(([k,b])=>{
+    const total=prec()-(b.descuento||0);
+    const ab=(ABI[k]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+    items.push({tipo:'i',id:k,nombre:b.cliente,sub:`Boleta ${k}`,saldo:Math.max(0,total-ab)});
+  });
+  [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).forEach(p=>{
+    const ab=(ABP[p.id]||[]).filter(a=>!a.pendiente).reduce((s,a)=>s+a.monto,0);
+    items.push({tipo:'p',id:p.id,nombre:p.cliente,sub:`Paquete ×${p.nums.length}`,saldo:Math.max(0,p.total-ab)});
+  });
   if(buscar)items=items.filter(i=>i.nombre.toLowerCase().includes(buscar)||i.sub.toLowerCase().includes(buscar));
   if(!items.length){cont.innerHTML='<div class="empty">Sin resultados</div>';return;}
   cont.innerHTML=items.map(it=>`
@@ -2377,23 +2227,8 @@ function registrarAbonoRapido(tipo,id,nombre){
     const monto=parseFloat(document.getElementById('rapido-monto').value);
     if(isNaN(monto)||monto<=0){alert('Monto inválido');return;}
     const nota=document.getElementById('rapido-nota').value.trim();
-    // Si es socio: abono interno confirmado automáticamente (no aparece en admin)
-    // Si es público/padre: pendiente de confirmación
-    const esSocioAbono = perfilActivo==='socio';
-    const abono={id:Date.now().toString(),monto,nota,fecha:today(),pendiente:!esSocioAbono,interno:esSocioAbono};
-    if(tipo==='v'){
-      const key=String(id);
-      if(esSocioAbono){
-        // Guardar en SOCIO_DATA como abono interno, no en ABV global
-        const sid=socioActivoId;
-        if(!SOCIO_DATA[sid])SOCIO_DATA[sid]={ventas:{},abonos:{},abonosVendedores:{}};
-        if(!SOCIO_DATA[sid].abonosVendedores)SOCIO_DATA[sid].abonosVendedores={};
-        if(!SOCIO_DATA[sid].abonosVendedores[key])SOCIO_DATA[sid].abonosVendedores[key]=[];
-        SOCIO_DATA[sid].abonosVendedores[key].push(abono);
-      } else {
-        if(!ABV[key])ABV[key]=[];ABV[key].push(abono);
-      }
-    }
+    const abono={id:Date.now().toString(),monto,nota,fecha:today(),pendiente:true};
+    if(tipo==='v'){const key=String(id);if(!ABV[key])ABV[key]=[];ABV[key].push(abono);}
     else if(tipo==='i'){if(!ABI[id])ABI[id]=[];ABI[id].push(abono);}
     else if(tipo==='p'){if(!ABP[id])ABP[id]=[];ABP[id].push(abono);}
     saveAndSync();renderAbonosRapido();
@@ -2449,57 +2284,26 @@ function renderHistorial(){
   }).join('');
 }
 
-// Nombre JSON con fecha y hora
-
-
-function previewTextoDesal(){
-  const raw=document.getElementById('texto-desal-nums').value;
-  const prev=document.getElementById('texto-desal-preview');
-  if(!prev)return;
-  if(!raw.trim()){prev.innerHTML='';return;}
-  const items=parsearNums(raw);
-  const validos=items.filter(i=>B[i.k]&&!ABON[i.k]);
-  prev.innerHTML=validos.length
-    ?`<span style="color:var(--accent)">${validos.length} numero(s) a liberar</span>`
-    :'<span style="color:var(--text3)">Sin numeros validos</span>';
-}
-function confirmarTextoDesal(){
-  const raw=document.getElementById('texto-desal-nums').value;
-  if(!raw.trim()){alert('Escribe los numeros a liberar');return;}
-  const items=parsearNums(raw);
-  const aLiberar=items.filter(i=>B[i.k]&&!ABON[i.k]);
-  if(!aLiberar.length){alert('No hay numeros asignados validos (los abonados estan protegidos)');return;}
-  showModal('Desasignar en bloque',`Liberar ${aLiberar.length} numero(s)?`,()=>{
-    aLiberar.forEach(({k})=>delete B[k]);
-    document.getElementById('texto-desal-nums').value='';
-    document.getElementById('texto-desal-preview').innerHTML='';
-    saveAndSync();renderMapa();renderVendedores();
-    showToast(`${aLiberar.length} numero(s) liberados`);
-  });
-}
-function limpiarNumerosVendedor(vid){
-  const v=V.find(v=>v.id===vid);if(!v)return;
-  const nums=Object.entries(B).filter(([,b])=>b.tipo==='vendedor'&&(String(b.vid)===String(vid)));
-  if(!nums.length){showToast('Este vendedor no tiene numeros asignados');return;}
-  showModal('Limpiar numeros',`Liberar los ${nums.length} numero(s) de ${v.nombre}? El vendedor no se eliminara.`,()=>{
-    nums.forEach(([k])=>delete B[k]);
-    saveAndSync();renderVendedores();renderMapa();
-    showToast(`${nums.length} numero(s) liberados de ${v.nombre}`);
-  });
-}
+// ═══════════════════════════════ EXPORTAR EXCEL DINERO
 function exportarExcelDinero(){
-  if(typeof XLSX==='undefined'){alert('La libreria de Excel no esta cargada.');return;}
+  if(typeof XLSX==='undefined'){alert('La librería de Excel no está cargada. Verifica tu conexión a internet.');return;}
+
   const fmtN = n => Number(n).toFixed(2);
-  const hdrs = ['Nombre', 'Saldo pendiente (EUR)'];
+
+  const hdrs = ['Nombre', 'Saldo pendiente (€)'];
+
+  // ── Hoja 1: Vendedores ──────────────────────────────────────────────────
   const rowsV = sortV(V).map(v => {
     const {neto} = netoV(v);
-    const ab = (ABV[v.id]||ABV[String(v.id)]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+    const ab = (ABV[v.id]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
     const saldo = Math.max(0, neto - ab);
     return saldo > 0 ? [v.nombre, fmtN(saldo)] : null;
   }).filter(Boolean);
   const totV = rowsV.reduce((a,r)=>a+parseFloat(r[1]),0);
   rowsV.push(['TOTAL', fmtN(totV)]);
   const wsV = XLSX.utils.aoa_to_sheet([hdrs, ...rowsV]);
+
+  // ── Hoja 2: Paquetes ────────────────────────────────────────────────────
   const rowsP = [...PAQ].sort((a,b)=>a.cliente.localeCompare(b.cliente)).map(p => {
     const ab = (ABP[p.id]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
     const saldo = Math.max(0, p.total - ab);
@@ -2508,36 +2312,45 @@ function exportarExcelDinero(){
   const totP = rowsP.reduce((a,r)=>a+parseFloat(r[1]),0);
   rowsP.push(['TOTAL', fmtN(totP)]);
   const wsP = XLSX.utils.aoa_to_sheet([hdrs, ...rowsP]);
+
+  // ── Hoja 3: Individuales ────────────────────────────────────────────────
   const rowsI = Object.entries(B)
     .filter(([,b])=>b.tipo==='individual')
     .sort(([,a],[,b])=>a.cliente.localeCompare(b.cliente))
     .map(([k,b])=>{
       const total = prec() - (b.descuento||0);
-      const ab = (ABI[k]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
+      const ab    = (ABI[k]||[]).filter(x=>!x.pendiente).reduce((a,x)=>a+x.monto,0);
       const saldo = Math.max(0, total - ab);
       return saldo > 0 ? [b.cliente, fmtN(saldo)] : null;
     }).filter(Boolean);
   const totI = rowsI.reduce((a,r)=>a+parseFloat(r[1]),0);
   rowsI.push(['TOTAL', fmtN(totI)]);
   const wsI = XLSX.utils.aoa_to_sheet([hdrs, ...rowsI]);
+
+  // ── Hoja 4: Resumen general ─────────────────────────────────────────────
   const wsR = XLSX.utils.aoa_to_sheet([
-    ['Concepto', 'Saldo pendiente (EUR)'],
-    ['Vendedores', fmtN(totV)],
+    ['Concepto', 'Saldo pendiente (€)'],
+    ['Vendedores',    fmtN(totV)],
     ['Paquetes RC&R', fmtN(totP)],
-    ['Individuales', fmtN(totI)],
-    ['TOTAL GLOBAL', fmtN(totV + totP + totI)]
+    ['Individuales',  fmtN(totI)],
+    ['TOTAL GLOBAL',  fmtN(totV + totP + totI)]
   ]);
+
+  // ── Construir libro y descargar ─────────────────────────────────────────
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsR, 'Resumen');
   XLSX.utils.book_append_sheet(wb, wsV, 'Vendedores');
   XLSX.utils.book_append_sheet(wb, wsP, 'Paquetes');
   XLSX.utils.book_append_sheet(wb, wsI, 'Individuales');
-  const fecha = new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/[/]/g,'-');
-  XLSX.writeFile(wb, 'Dinero_por_recoger_'+fecha+'.xlsx');
-  showToast('Excel exportado correctamente');
+
+  const fecha = new Date().toLocaleDateString('es-ES',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dinero_por_recoger_${CFG.nombre||'Sorteo'}_${fecha}.xlsx`);
+  showToast('✓ Excel exportado correctamente');
 }
+
+// Nombre JSON con fecha y hora
 // ═══════════════════════════════ INIT
-perfilActivo='publico';isAdmin=false;socioActivoId=null;
+applyProfile();
 refreshSelects();
 // Cargar desde la nube al inicio, luego renderizar
 // Pequeño retraso para asegurar que el navegador esté listo para fetch externo
