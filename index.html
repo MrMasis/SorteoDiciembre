@@ -1155,20 +1155,38 @@ function addPaquete(){
 function editarMonto(tipo,id){
   if(tipo==='individual'){
     const b=B[id];
-    showModal('Editar monto',`Boleta ${id} — ${b.cliente}`,()=>{
+    showModal('Editar boleta',`Boleta ${id}`,()=>{
+      const nombre=document.getElementById('edit-nombre-ind').value.trim();
+      if(nombre)B[id].cliente=nombre;
       B[id].descuento=parseFloat(document.getElementById('edit-desc').value)||0;
       saveAndSync();renderDirectas();renderDinero();
-    },`<div class="modal-field"><label>Precio base: ${fmt(prec())}</label></div>
+    },`<div class="modal-field"><label>Nombre del cliente</label><input id="edit-nombre-ind" type="text" style="width:100%" value="${b.cliente}"></div>
+       <div class="modal-field"><label>Precio base: ${fmt(prec())}</label></div>
        <div class="modal-field"><label>Descuento (€)</label><input id="edit-desc" type="number" min="0" value="${b.descuento||0}"></div>`);
   } else {
     const paq=PAQ.find(p=>p.id===id);if(!paq)return;
-    showModal('Editar monto del paquete',`Paquete de ${paq.cliente}`,()=>{
+    const numsHtml=paq.nums.map(n=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#f0f0f0;border-radius:4px;padding:2px 6px;margin:2px;font-family:var(--mono);font-size:13px">${n}<button onclick="quitarNumDePaquete('${id}','${n}')" style="border:none;background:none;cursor:pointer;color:#e53;font-size:14px;line-height:1;padding:0">×</button></span>`).join('');
+    showModal('Editar paquete',`Paquete de ${paq.cliente}`,()=>{
+      const nombre=document.getElementById('edit-nombre-paq').value.trim();
+      if(nombre){paq.cliente=nombre;paq.nums.forEach(n=>{if(B[n])B[n].cliente=nombre;});}
       const d=parseFloat(document.getElementById('edit-desc-paq').value)||0;
       paq.descuento=d;paq.total=Math.max(0,paq.precioBase-d);
       saveAndSync();renderDirectas();renderDinero();
-    },`<div class="modal-field"><label>Precio base: ${fmt(paq.precioBase)}</label></div>
-       <div class="modal-field"><label>Descuento (€)</label><input id="edit-desc-paq" type="number" min="0" value="${paq.descuento||0}"></div>`);
+    },`<div class="modal-field"><label>Nombre del cliente</label><input id="edit-nombre-paq" type="text" style="width:100%" value="${paq.cliente}"></div>
+       <div class="modal-field"><label>Precio base: ${fmt(paq.precioBase)}</label></div>
+       <div class="modal-field"><label>Descuento (€)</label><input id="edit-desc-paq" type="number" min="0" value="${paq.descuento||0}"></div>
+       <div class="modal-field"><label>Números del paquete (× para quitar)</label><div id="edit-paq-nums" style="display:flex;flex-wrap:wrap;gap:2px;margin-top:4px">${numsHtml}</div></div>`);
   }
+}
+function quitarNumDePaquete(paqId,num){
+  const paq=PAQ.find(p=>p.id===paqId);if(!paq)return;
+  if(paq.nums.length<=1){alert('No se puede quitar el último número. Usa ✕ para eliminar el paquete completo.');return;}
+  paq.nums=paq.nums.filter(n=>n!==num);
+  delete B[num];
+  paq.precioBase=paq.nums.length*prec();paq.total=Math.max(0,paq.precioBase-(paq.descuento||0));
+  const numsHtml=paq.nums.map(n=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#f0f0f0;border-radius:4px;padding:2px 6px;margin:2px;font-family:var(--mono);font-size:13px">${n}<button onclick="quitarNumDePaquete('${paqId}','${n}')" style="border:none;background:none;cursor:pointer;color:#e53;font-size:14px;line-height:1;padding:0">×</button></span>`).join('');
+  const container=document.getElementById('edit-paq-nums');if(container)container.innerHTML=numsHtml;
+  document.querySelectorAll('#modal-body .modal-field label').forEach(l=>{if(l.textContent.startsWith('Precio base'))l.textContent=`Precio base: ${fmt(paq.precioBase)}`;});
 }
 function agregarNumsPaquete(paqId){
   const paq=PAQ.find(p=>p.id===paqId);if(!paq)return;
@@ -1567,10 +1585,17 @@ function desasignarSel(){
   if(!sel.size){alert('Selecciona números primero');return;}
   showModal('Desasignar',`¿Liberar ${sel.size} número(s)?`,()=>{
     sel.forEach(k=>{
-      if(B[k]&&B[k].tipo==='paquete'){const paq=PAQ.find(p=>p.id===B[k].paqId);if(paq){PAQ.splice(PAQ.indexOf(paq),1);paq.nums.forEach(n=>{delete B[n];});delete ABP[paq.id];}}
-      else{delete B[k];delete ABI[k];}
+      if(B[k]&&B[k].tipo==='paquete'){
+        const paq=PAQ.find(p=>p.id===B[k].paqId);
+        if(paq){
+          paq.nums=paq.nums.filter(n=>n!==k);
+          if(!paq.nums.length){PAQ.splice(PAQ.indexOf(paq),1);delete ABP[paq.id];}
+          else{paq.precioBase=paq.nums.length*prec();paq.total=Math.max(0,paq.precioBase-(paq.descuento||0));}
+        }
+        delete B[k];
+      } else{delete B[k];delete ABI[k];}
     });
-    saveAndSync();sel.clear();document.getElementById('del-count').textContent=0;renderMapa();
+    saveAndSync();sel.clear();document.getElementById('del-count').textContent=0;renderMapa();renderDirectas();
   });
 }
 function clearSel(){sel.clear();['del-count','gold-count'].forEach(id=>document.getElementById(id).textContent=0);renderMapa();}
